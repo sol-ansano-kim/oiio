@@ -6,3 +6,8 @@ testsuite/runtest.pyc
 src/doc/figures/
 .cproject
 .project
+.sconsign.dblite
+.build/
+oiio.cmake.*
+release/
+debug/
