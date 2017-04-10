@@ -28,3 +28,6 @@
 [submodule "LibRaw"]
 	path = LibRaw
 	url = https://github.com/sol-ansano-kim/LibRaw.git
+[submodule "jbigkit"]
+	path = jbigkit
+	url = https://github.com/gatgui/jbigkit.git
