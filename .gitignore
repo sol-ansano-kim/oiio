@@ -11,3 +11,4 @@ src/doc/figures/
 oiio.cmake.*
 release/
 debug/
+excons.cache
