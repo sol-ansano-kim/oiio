@@ -3,6 +3,7 @@ import re
 import sys
 import excons
 import os
+import glob
 
 
 major = 1
@@ -322,6 +323,17 @@ oiio_dependecies += ocio_outputs
 
 
 # opexnexr
+openexr_h_patterns = ["openexr/IlmBase/Half/half.h",
+                      "openexr/IlmBase/Half/halfExport.h",
+                      "openexr/IlmBase/Half/halfFunction.h",
+                      "openexr/IlmBase/Half/halfLimits.h",
+                      "openexr/IlmBase/Iex/*.h",
+                      "openexr/IlmBase/IexMath/*.h",
+                      "openexr/IlmBase/Imath/*.h",
+                      "openexr/IlmBase/IlmThread/*.h",
+                      "openexr/OpenEXR/IlmImfUtil/*.h"]
+
+
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "openexr")
 if not rv:
     excons.PrintOnce("Build openexr from sources ...")
@@ -346,7 +358,17 @@ if not rv:
     oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = ilmt
     oiio_opts["OPENEXR_IMATH_LIBRARY"] = imath
 
-    openexr_outputs = [iex, half, imf, ilmt, imath]
+    openexr_h = []
+    openexr_h_deps = []
+    for p in openexr_h_patterns:
+        openexr_h += glob.glob(p)
+    openexr_h += filter(lambda x: os.path.splitext(os.path.basename(x))[0] not in ["b44ExpLogTable", "dwaLookups"], glob.glob("openexr/OpenEXR/IlmImf/*.h"))
+
+    openexr_h_deps = map(lambda x: "release/include/OpenEXR/" + os.path.basename(x), openexr_h)
+    openexr_h_deps += ["release/include/OpenEXR/" + "IlmBaseConfig.h"]
+    openexr_h_deps += ["release/include/OpenEXR/" + "OpenEXRConfig.h"]
+
+    openexr_outputs = [iex, half, imf, ilmt, imath] + openexr_h_deps
 else:
     openexr_outputs = []
 
