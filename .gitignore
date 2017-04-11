@@ -12,3 +12,5 @@ oiio.cmake.*
 release/
 debug/
 excons.cache
+*.cmake.*
+*.automake.*
