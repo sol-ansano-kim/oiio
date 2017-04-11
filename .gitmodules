@@ -34,3 +34,6 @@
 [submodule "Little-cms"]
 	path = Little-cms
 	url = https://github.com/gatgui/Little-cms.git
+[submodule "bzip2"]
+	path = bzip2
+	url = https://github.com/gatgui/bzip2.git
