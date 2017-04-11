@@ -31,3 +31,6 @@
 [submodule "jbigkit"]
 	path = jbigkit
 	url = https://github.com/gatgui/jbigkit.git
+[submodule "Little-cms"]
+	path = Little-cms
+	url = https://github.com/gatgui/Little-cms.git
