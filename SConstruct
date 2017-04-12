@@ -43,7 +43,7 @@ oiio_opts["USE_CCACHE"] = False
 # python
 oiio_opts["USE_PYTHON"] = True
 oiio_opts["USE_PYTHON3"] = False
-oiio_opts["PYTHON_VERSION"] = 2.6
+oiio_opts["PYTHON_VERSION"] = 2.7
 oiio_opts["PYTHON3_VERSION"] = 3.2
 oiio_opts["PYLIB_INCLUDE_SONAME"] = False
 oiio_opts["PYLIB_LIB_PREFIX"] = False
