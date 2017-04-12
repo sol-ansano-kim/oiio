@@ -113,7 +113,7 @@ if not rv:
     excons.PrintOnce("Build jbig from sources ...")
     excons.Call("jbigkit", imp=["JbigName", "JbigPath"])
     jbig_path = JbigPath()
-    jbig_outputs = [jbig_path]
+    jbig_outputs = [jbig_path, out_incdir + "/jbig.h", out_incdir + "/jbig85.h", out_incdir + "/jbig_ar.h"]
 
     tiff_overrides["with-jbig"] = os.path.dirname(os.path.dirname(jbig_path))
     tiff_overrides["jbig-static"] = 1
