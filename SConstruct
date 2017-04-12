@@ -71,6 +71,9 @@ jpeg_overrides["libjpeg-jpeg8"] = 1
 openexr_overrides["with-boost"] = boost_dir
 
 
+if sys.platform == "darwin":
+    oiio_opts["EXTRA_CPP_ARGS"] = " -Wno-deprecated-declarations"
+
 
 # zlib
 def ZlibName(static):
