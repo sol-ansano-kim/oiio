@@ -58,6 +58,7 @@ oiio_opts["USE_OPENJPEG"] = True
 oiio_opts["USE_FREETYPE"] = True
 oiio_opts["USE_LIBRAW"] = True
 oiio_opts["USE_OCIO"] = True
+oiio_opts["USE_FFMPEG"] = False
 
 ## extra args
 oiio_opts["EXTRA_CPP_ARGS"] = ""
