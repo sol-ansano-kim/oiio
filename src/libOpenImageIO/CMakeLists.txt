@@ -129,7 +129,15 @@ if (FREETYPE_FOUND)
     target_link_libraries (OpenImageIO ${FREETYPE_LIBRARIES} ${BZIP2_LIBRARIES})
 endif ()
 
+# link external libs
+if (EXTERNAL_LIBS)
+    target_link_libraries (OpenImageIO ${EXTERNAL_LIBS})
+endif ()
 
+# include external include directories
+if (EXTERNAL_INCLUDE_DIRS)
+    include_directories (${EXTERNAL_INCLUDE_DIRS})
+endif ()
 
 if (WIN32)
     target_link_libraries (OpenImageIO psapi.lib)

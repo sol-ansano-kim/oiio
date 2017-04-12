@@ -27,6 +27,8 @@ freetype_overrides = {}
 jpeg_overrides = {}
 openexr_overrides = {}
 oiio_dependecies = []
+extra_libs = []
+extra_includes = []
 
 # build options
 oiio_opts["LINKSTATIC"] = True
@@ -213,7 +215,7 @@ if not rv:
 else:
     tiff_outputs = []
 
-oiio_opts["TIFF_LIBRARIES"] = LibtiffPath() + ";" + JbigPath()
+extra_libs.append(JbigPath())
 oiio_dependecies += tiff_outputs
 
 
@@ -377,6 +379,9 @@ oiio_dependecies += openexr_outputs
 
 
 # oiio build
+oiio_opts["EXTERNAL_LIBS"] = ";".join(extra_libs)
+oiio_opts["EXTERNAL_INCLUDE_DIRS"] = ";".join(extra_includes)
+
 prjs.append({"name": "oiio",
              "type": "cmake",
              "cmake-opts": oiio_opts,
@@ -418,4 +423,3 @@ def RequireOiio(env, static=False):
 
 Default("oiio")
 Export("OiioName OiioPath RequireOiio")
-
