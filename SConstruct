@@ -16,7 +16,7 @@ staticlib = (excons.GetArgument("oiio-static", 0, int) != 0)
 out_basedir = excons.OutputBaseDirectory()
 out_incdir = excons.OutputBaseDirectory() + "/include"
 out_libdir = excons.OutputBaseDirectory() + "/lib"
-boost_path = excons.GetArgument("oiio-boost-path", "", str)
+boost_dir = excons.GetArgument("oiio-boost-dir", "", str)
 prjs = []
 oiio_opts = {}
 ocio_overrides = {}
@@ -24,13 +24,13 @@ png_overrides = {}
 tiff_overrides = {}
 libraw_overrides = {}
 freetype_overrides = {}
-jpeg_overrides = {"libjpeg-jpeg8": 1}
-openexr_overrise = {}
+jpeg_overrides = {}
+openexr_overrides = {}
 oiio_dependecies = []
 
-
 # build options
-oiio_opts["LINKSTATIC"] = False
+oiio_opts["LINKSTATIC"] = True
+oiio_opts["USE_fPIC"] = True
 oiio_opts["BUILDSTATIC"] = staticlib
 oiio_opts["NOTHREADS"] = False
 oiio_opts["OIIO_THREAD_ALLOW_DCLP"] = True
@@ -49,23 +49,23 @@ oiio_opts["PYLIB_INCLUDE_SONAME"] = False
 oiio_opts["PYLIB_LIB_PREFIX"] = False
 
 ## addtional
+oiio_opts["BOOST_ROOT"] = boost_dir
 oiio_opts["USE_FIELD3D"] = False
 oiio_opts["USE_JPEGTURBO"] = True
 oiio_opts["USE_OPENJPEG"] = True
 oiio_opts["USE_FREETYPE"] = True
 oiio_opts["USE_LIBRAW"] = True
 oiio_opts["USE_OCIO"] = True
-# oiio_opts["JPEG_PATH"] = "" # path
-# oiio_opts["LIBRAW_PATH"] = "" # path
 
+## extra args
 oiio_opts["EXTRA_CPP_ARGS"] = ""
 oiio_opts["EXTRA_DSO_LINK_ARGS"] = ""
 
-##
-oiio_opts["USE_NUKE"] = False
-oiio_opts["USE_EXTERNAL_PUGIXML"] = False
-oiio_opts["USE_SIMD"] = ""
-oiio_opts["CODECOV"] = False
+## jpeg build option
+jpeg_overrides["libjpeg-jpeg8"] = 1
+
+# boost
+openexr_overrides["with-boost"] = boost_dir
 
 
 
@@ -99,9 +99,9 @@ if not rv:
     freetype_overrides["with-zlib"] = base
     freetype_overrides["zlib-static"] = z_static
     freetype_overrides["zlib-name"] = name
-    openexr_overrise["with-zlib"] = base
-    openexr_overrise["zlib-static"] = z_static
-    openexr_overrise["zlib-name"] = name
+    openexr_overrides["with-zlib"] = base
+    openexr_overrides["zlib-static"] = z_static
+    openexr_overrides["zlib-name"] = name
 else:
     zlib_outputs = []
 
@@ -337,7 +337,7 @@ openexr_h_patterns = ["openexr/IlmBase/Half/half.h",
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "openexr")
 if not rv:
     excons.PrintOnce("Build openexr from sources ...")
-    excons.Call("openexr", overrides=openexr_overrise)
+    excons.Call("openexr", overrides=openexr_overrides)
     openexr_static = (excons.GetArgument("openexr-static", 1, int) != 0)
     openexr_lib_suffx = excons.GetArgument("openexr-suffix", "-2_2")
     openexr_static_suffic = excons.GetArgument("openexr-static-suffix", "_s")
