@@ -112,7 +112,7 @@ if not rv:
     base = os.path.dirname(os.path.dirname(z_path))
     name = ZlibName(static=z_static)
 
-    png_overrides["with-zlib"] = base    
+    png_overrides["with-zlib"] = base
     png_overrides["zlib-static"] = z_static
     png_overrides["zlib-name"] = name
     tiff_overrides["with-zlib"] = base
@@ -310,7 +310,7 @@ if not rv:
     if sys.platform == "win32":
         ocio_overrides["ocio-use-boost"] = 1
     excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
-    excons.Call("OpenColorIO", overrides=ocio_overrides, imp=["OCIOPath"])
+    excons.Call("OpenColorIO", overrides=ocio_overrides, imp=["OCIOPath", "YamlCppPath", "TinyXmlPath"])
     ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
     ocio_outputs = [OCIOPath(ocio_static)]
     # TODO : fix oiio cmake config
@@ -318,9 +318,10 @@ if not rv:
     # oiio_opts["OCIO_LIBRARY"] = OCIOPath(ocio_static)
     oiio_opts["OCIO_LIBRARIES"] = OCIOPath(ocio_static)
     ext = ".lib" if sys.platform == "win32" else (".a" if ocio_static else ".so")
+    libprf = "" if sys.platform == "win32" else "lib"
     oiio_opts["LCMS2_LIBRARY"] = LCMS2Path()
-    oiio_opts["YAML_LIBRARY"] = out_libdir + "/libyaml-cpp" + ext
-    oiio_opts["TINYXML_LIBRARY"] = out_libdir + "/libtinyxml" + ext
+    oiio_opts["YAML_LIBRARY"] = YamlCppPath()
+    oiio_opts["TINYXML_LIBRARY"] = TinyXmlPath()
 else:
     ocio_outputs = []
 
