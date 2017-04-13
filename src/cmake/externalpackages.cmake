@@ -465,7 +465,7 @@ if (USE_LIBRAW)
         message (STATUS "LibRaw not found!")
     endif()
 
-    if (LINKSTATIC)
+    if (LINKSTATIC AND USE_JASPER)
         find_package (Jasper)
         find_library (LCMS2_LIBRARIES NAMES lcms2)
         set (LibRaw_r_LIBRARIES ${LibRaw_r_LIBRARIES} ${JASPER_LIBRARIES} ${LCMS2_LIBRARIES})

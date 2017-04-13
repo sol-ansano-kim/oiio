@@ -198,6 +198,8 @@ set (USE_FREETYPE ON CACHE BOOL "Use Freetype if found")
 set (USE_GIF ON CACHE BOOL "Use GIF if found")
 set (USE_PTEX ON CACHE BOOL "Use PTex if found")
 set (USE_LIBRAW ON CACHE BOOL "Use LibRaw if found")
+set (USE_JASPER OFF CACHE BOOL "Use Jasper if found")
+
 set (LIBRAW_PATH "" CACHE STRING "Custom LibRaw path")
 set (NOTHREADS OFF CACHE BOOL "Compile with no threads or locking")
 set (OIIO_THREAD_ALLOW_DCLP ON CACHE BOOL "OIIO threads may use DCLP for speed")

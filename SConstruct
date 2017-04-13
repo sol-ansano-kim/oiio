@@ -239,8 +239,8 @@ rv = excons.cmake.ExternalLibRequire(oiio_opts, "libraw")
 if not rv:
     excons.PrintOnce("Build libraw from sources ...")
     excons.Call("LibRaw", overrides=libraw_overrides, imp=["LibrawPath", "LibrawName"])
-    oiio_opts["LIBRAW_INCLUDE_DIR"] = out_incdir
-    oiio_opts["LIBRAW_LIBRARY"] = LibrawPath()
+    oiio_opts["LibRaw_INCLUDE_DIR"] = out_incdir + "/libraw"
+    oiio_opts["LibRaw_r_LIBRARIES"] = LibrawPath()
     libraw_outputs = [LibrawPath()]
 else:
     libraw_outputs = []
