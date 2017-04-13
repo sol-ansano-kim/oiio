@@ -812,7 +812,7 @@ DeepData::split (int pixel, float depth)
 #if defined(WIN32) && (_MSC_VER < 1900)
     using boost::math::log1p;
     using boost::math::expm1;
-#else if OIIO_CPLUSPLUS_VERSION >= 11
+#elif OIIO_CPLUSPLUS_VERSION >= 11
     using std::log1p;
     using std::expm1;
 #endif
@@ -955,7 +955,7 @@ DeepData::merge_overlaps (int pixel)
 {
 #if defined(WIN32) && (_MSC_VER < 1900)
     using boost::math::log1p;
-#else if OIIO_CPLUSPLUS_VERSION >= 11
+#elif OIIO_CPLUSPLUS_VERSION >= 11
     using std::log1p;
 #endif
     int zchan = m_impl->m_z_channel;
