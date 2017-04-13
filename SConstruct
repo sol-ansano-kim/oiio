@@ -366,6 +366,9 @@ oiio_dependecies += openexr_outputs
 # oiio build
 oiio_opts["EXTERNAL_LIBS"] = ";".join(extra_libs)
 oiio_opts["EXTERNAL_INCLUDE_DIRS"] = ";".join(extra_includes)
+for k, v in oiio_opts.iteritems():
+    if isinstance(v, basestring):
+        oiio_opts[k] = v.replace("\\", "/")
 
 prjs.append({"name": "oiio",
              "type": "cmake",
