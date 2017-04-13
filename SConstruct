@@ -307,6 +307,8 @@ oiio_dependecies += freetype_outputs
 # ocio
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "OpenColorIO")
 if not rv:
+    if sys.platform == "win32":
+        ocio_overrides["ocio-use-boost"] = 1
     excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
     excons.Call("OpenColorIO", overrides=ocio_overrides, imp=["OCIOPath"])
     ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
