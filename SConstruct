@@ -16,6 +16,8 @@ staticlib = (excons.GetArgument("oiio-static", 0, int) != 0)
 out_basedir = excons.OutputBaseDirectory()
 out_incdir = excons.OutputBaseDirectory() + "/include"
 out_libdir = excons.OutputBaseDirectory() + "/lib"
+python_dir = excons.GetArgument("oiio-python-dir", "", str)
+python_ver = excons.GetArgument("oiio-python-ver", "2.7", str)
 
 prjs = []
 oiio_opts = {}
@@ -43,15 +45,32 @@ oiio_opts["USE_LIBCPLUSPLUS"] = False
 oiio_opts["USE_CCACHE"] = False
 
 # python
-oiio_opts["USE_PYTHON"] = True
-oiio_opts["USE_PYTHON3"] = False
-oiio_opts["PYTHON_VERSION"] = 2.7
-oiio_opts["PYTHON3_VERSION"] = 3.2
 oiio_opts["PYLIB_INCLUDE_SONAME"] = False
 oiio_opts["PYLIB_LIB_PREFIX"] = False
 
-## addtional
+if int(python_ver.split(".")[0]) == 2:
+    oiio_opts["PYTHON_VERSION"] = python_ver
+    oiio_opts["USE_PYTHON"] = True
+    oiio_opts["USE_PYTHON3"] = False
+else:
+    oiio_opts["PYTHON3_VERSION"] = python_ver
+    oiio_opts["USE_PYTHON"] = False
+    oiio_opts["USE_PYTHON3"] = True
+
+if python_dir:
+    if sys.platform == "win32":
+        oiio_opts["PYTHON_LIBRARY"] = "%s/libs/python%s.lib" % (python_dir, python_ver.replace(".", ""))
+        oiio_opts["PYTHON_EXECUTABLE"] = "%s/python.exe" % (python_dir)
+    else:
+        oiio_opts["PYTHON_LIBRARY"] = "%s/libs/libpython%s.so" % (python_dir, python_ver)
+        oiio_opts["PYTHON_EXECUTABLE"] = "%s/python" % (python_dir)
+
+    oiio_opts["PYTHON_INCLUDE_DIR"] = python_dir + "/include"
+
+# boost
 oiio_opts["BOOST_ROOT"] = excons.GetArgument("with-boost", "", str)
+
+## addtional
 oiio_opts["USE_FIELD3D"] = False
 oiio_opts["USE_JPEGTURBO"] = True
 oiio_opts["USE_OPENJPEG"] = True
@@ -366,9 +385,11 @@ oiio_dependecies += openexr_outputs
 # oiio build
 oiio_opts["EXTERNAL_LIBS"] = ";".join(extra_libs)
 oiio_opts["EXTERNAL_INCLUDE_DIRS"] = ";".join(extra_includes)
+
 for k, v in oiio_opts.iteritems():
     if isinstance(v, basestring):
         oiio_opts[k] = v.replace("\\", "/")
+
 
 prjs.append({"name": "oiio",
              "type": "cmake",
