@@ -143,9 +143,9 @@ if not rv:
     libraw_overrides["lcms2-name"] = name
     libraw_overrides["libraw-with-lcms2"] = 1
 
-    ocio_overrides["with-lcms"] = base
-    ocio_overrides["lcms-static"] = lcms2_static
-    ocio_overrides["lcms-name"] = name
+    ocio_overrides["with-lcms2"] = base
+    ocio_overrides["lcms2-static"] = lcms2_static
+    ocio_overrides["lcms2-name"] = name
     
 else:
     lcms2_outputs = []
@@ -285,36 +285,17 @@ else:
 oiio_dependecies += freetype_outputs
 
 
-def OpenColorIOName(static):
-    ocio_libname = excons.GetArgument("ocio-lib-name", None)
-    if ocio_libname is None:
-        ocio_libname = "OpenColorIO"
-
-    ocio_libsuffix = excons.GetArgument("ocio-lib-suffix", None)
-    if ocio_libsuffix:
-        ocio_libname += ocio_libsuffix
-
-    if static:
-        ocio_libname += excons.GetArgument("ocio-static-lib-suffix", "_s")
-
-    return ocio_libname
-
-def OpenColorIOPath(static):
-    ext = ".lib" if sys.platform == "win32" else (".a" if static else ".so")
-
-    return out_libdir + "/lib" + OpenColorIOName(static) + ext
-
 # ocio
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "OpenColorIO")
 if not rv:
     excons.PrintOnce("Build OpenColorIO from sources ...")
-    excons.Call("OpenColorIO", overrides=ocio_overrides)
+    excons.Call("OpenColorIO", overrides=ocio_overrides, imp=["OCIOPath"])
     ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
-    ocio_outputs = [OpenColorIOPath(ocio_static)]
-    # TODO : fix ocio cmake config
+    ocio_outputs = [OCIOPath(ocio_static)]
+    # TODO : fix oiio cmake config
     oiio_opts["OCIO_INCLUDE_DIR"] = out_incdir
-    # oiio_opts["OCIO_LIBRARY"] = OpenColorIOPath(ocio_static)
-    oiio_opts["OCIO_LIBRARIES"] = OpenColorIOPath(ocio_static)
+    # oiio_opts["OCIO_LIBRARY"] = OCIOPath(ocio_static)
+    oiio_opts["OCIO_LIBRARIES"] = OCIOPath(ocio_static)
     ext = ".lib" if sys.platform == "win32" else (".a" if ocio_static else ".so")
     oiio_opts["LCMS2_LIBRARY"] = LCMS2Path()
     oiio_opts["YAML_LIBRARY"] = out_libdir + "/libyaml-cpp" + ext
