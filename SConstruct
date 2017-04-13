@@ -16,7 +16,7 @@ staticlib = (excons.GetArgument("oiio-static", 0, int) != 0)
 out_basedir = excons.OutputBaseDirectory()
 out_incdir = excons.OutputBaseDirectory() + "/include"
 out_libdir = excons.OutputBaseDirectory() + "/lib"
-boost_dir = excons.GetArgument("oiio-boost-dir", "", str)
+
 prjs = []
 oiio_opts = {}
 ocio_overrides = {}
@@ -51,7 +51,7 @@ oiio_opts["PYLIB_INCLUDE_SONAME"] = False
 oiio_opts["PYLIB_LIB_PREFIX"] = False
 
 ## addtional
-oiio_opts["BOOST_ROOT"] = boost_dir
+oiio_opts["BOOST_ROOT"] = excons.GetArgument("with-boost", "", str)
 oiio_opts["USE_FIELD3D"] = False
 oiio_opts["USE_JPEGTURBO"] = True
 oiio_opts["USE_OPENJPEG"] = True
@@ -66,9 +66,6 @@ oiio_opts["EXTRA_DSO_LINK_ARGS"] = ""
 
 ## jpeg build option
 jpeg_overrides["libjpeg-jpeg8"] = 1
-
-# boost
-openexr_overrides["with-boost"] = boost_dir
 
 
 if sys.platform == "darwin":
