@@ -81,7 +81,7 @@ def ZlibDefines(static):
 
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "zlib", libnameFunc=ZlibName, definesFunc=ZlibDefines)
 if not rv:
-    excons.PrintOnce("Build zlib from sources ...")
+    excons.PrintOnce("OIIO: Build zlib from sources ...")
     excons.Call("zlib", imp=["ZlibName", "ZlibPath"])    
     z_static = excons.GetArgument("zlib-static", 1, int)
     z_path = ZlibPath(static=z_static)
@@ -111,7 +111,7 @@ else:
 # jbig
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "jbig")
 if not rv:
-    excons.PrintOnce("Build jbig from sources ...")
+    excons.PrintOnce("OIIO: Build jbig from sources ...")
     excons.Call("jbigkit", imp=["JbigName", "JbigPath"])
     jbig_path = JbigPath()
     jbig_outputs = [jbig_path, out_incdir + "/jbig.h", out_incdir + "/jbig85.h", out_incdir + "/jbig_ar.h"]
@@ -126,7 +126,7 @@ else:
 # lcms2
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "lcms2", varPrefix="LCMS2_")
 if not rv:
-    excons.PrintOnce("Build lcms from sources ...")
+    excons.PrintOnce("OIIO: Build lcms from sources ...")
     excons.Call("Little-cms", imp=["LCMS2Name", "LCMS2Path"])
     lcms2_path = LCMS2Path()
     lcms2_outputs = [lcms2_path]
@@ -154,7 +154,7 @@ else:
 # jpeg
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "libjpeg", varPrefix="JPEG_")
 if not rv:
-    excons.PrintOnce("Build libjpeg-turbo from sources ...")
+    excons.PrintOnce("OIIO: Build libjpeg-turbo from sources ...")
     excons.Call("libjpeg-turbo", overrides=jpeg_overrides, imp=["LibjpegName LibjpegPath"])
     oiio_opts["JPEG_INCLUDE_DIR"] = out_incdir
     oiio_opts["JPEG_LIBRARY"] = LibjpegPath(static=excons.GetArgument("libjpeg-static", 1, int))
@@ -183,7 +183,7 @@ oiio_dependecies += jpeg_outputs
 # png
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "libpng", varPrefix="PNG_")
 if not rv:
-    excons.PrintOnce("Build libpng from sources ...")
+    excons.PrintOnce("OIIO: Build libpng from sources ...")
     excons.cmake.AddConfigureDependencies("libpng", zlib_outputs)
     excons.Call("libpng", overrides=png_overrides, imp=["LibpngName", "LibpngPath"])
     oiio_opts["PNG_INCLUDE_DIR"] = out_incdir
@@ -206,7 +206,7 @@ oiio_dependecies += libpng_outputs
 # tiff
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "libtiff", varPrefix="TIFF_")
 if not rv:
-    excons.PrintOnce("Build libtiff from sources ...")
+    excons.PrintOnce("OIIO: Build libtiff from sources ...")
     excons.cmake.AddConfigureDependencies("libtiff", jbig_outputs + zlib_outputs + jpeg_outputs)
 
     tiff_outputs = [excons.cmake.OutputsCachePath("libtiff")]
@@ -223,7 +223,7 @@ oiio_dependecies += tiff_outputs
 # openjpeg
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "openjpeg")
 if not rv:
-    excons.PrintOnce("Build openjpeg from sources ...")
+    excons.PrintOnce("OIIO: Build openjpeg from sources ...")
     excons.Call("openjpeg", imp=["OpenjpegPath"])
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = out_incdir
     oiio_opts["OPENJPEG_LIBRARY"] = OpenjpegPath()
@@ -237,7 +237,7 @@ oiio_dependecies += openjpeg_outputs
 # libraw
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "libraw")
 if not rv:
-    excons.PrintOnce("Build libraw from sources ...")
+    excons.PrintOnce("OIIO: Build libraw from sources ...")
     excons.Call("LibRaw", overrides=libraw_overrides, imp=["LibrawPath", "LibrawName"])
     oiio_opts["LibRaw_INCLUDE_DIR"] = out_incdir + "/libraw"
     oiio_opts["LibRaw_r_LIBRARIES"] = LibrawPath()
@@ -257,7 +257,7 @@ def Bzip2Defines(static):
 
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "bz2", libnameFunc=Bzip2Libname, definesFunc=Bzip2Defines, varPrefix="BZIP2_")
 if not rv:
-    excons.PrintOnce("Build bzip2 from sources ...")
+    excons.PrintOnce("OIIO: Build bzip2 from sources ...")
     excons.Call("bzip2", imp=["BZ2Name", "BZ2Path"])
     bz2_static = excons.GetArgument("bz2-static", 1, int)
 
@@ -273,7 +273,7 @@ else:
 # freetype
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "freetype")
 if not rv:
-    excons.PrintOnce("Build freetype from sources ...")
+    excons.PrintOnce("OIIO: Build freetype from sources ...")
     excons.cmake.AddConfigureDependencies("freetype", zlib_outputs + libpng_outputs + bzip2_outputs)
     excons.Call("freetype", overrides=freetype_overrides, imp=["FreetypeName", "FreetypePath"])
     oiio_opts["FREETYPE_INCLUDE_DIR"] = out_incdir
@@ -288,7 +288,7 @@ oiio_dependecies += freetype_outputs
 # ocio
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "OpenColorIO")
 if not rv:
-    excons.PrintOnce("Build OpenColorIO from sources ...")
+    excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
     excons.Call("OpenColorIO", overrides=ocio_overrides, imp=["OCIOPath"])
     ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
     ocio_outputs = [OCIOPath(ocio_static)]
@@ -320,7 +320,7 @@ openexr_h_patterns = ["openexr/IlmBase/Half/half.h",
 
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "openexr")
 if not rv:
-    excons.PrintOnce("Build openexr from sources ...")
+    excons.PrintOnce("OIIO: Build openexr from sources ...")
     excons.Call("openexr", overrides=openexr_overrides)
     openexr_static = (excons.GetArgument("openexr-static", 1, int) != 0)
     openexr_lib_suffx = excons.GetArgument("openexr-suffix", "-2_2")
@@ -328,11 +328,14 @@ if not rv:
     ext = ".lib" if sys.platform == "win32" else (".a" if openexr_static else ".so")
 
     openexr_sf = openexr_lib_suffx + (openexr_static_suffic if openexr_static else "") + ext
-    iex = out_libdir + "/libIex" + openexr_sf
-    half = out_libdir + "/libHalf" + openexr_sf
-    imf = out_libdir + "/libIlmImf" + openexr_sf
-    ilmt = out_libdir + "/libIlmThread" + openexr_sf
-    imath = out_libdir + "/libIexMath" + openexr_sf
+    libprf = "lib"
+    if sys.platform == "win32":
+        libprf = ""
+    iex = out_libdir + "/" + libprf + "Iex" + openexr_sf
+    half = out_libdir + "/" + libprf + "Half" + openexr_sf
+    imf = out_libdir + "/" + libprf + "IlmImf" + openexr_sf
+    ilmt = out_libdir + "/" + libprf + "IlmThread" + openexr_sf
+    imath = out_libdir + "/" + libprf + "IexMath" + openexr_sf
 
     oiio_opts["OPENEXR_HOME"] = out_basedir
     oiio_opts["OPENEXR_INCLUDE_DIR"] = out_incdir
