@@ -121,10 +121,10 @@ DeepData_channelsize (const DeepData &dd, int c)
 void declare_deepdata()
 {
     class_<DeepData>("DeepData")
-        .def_readonly ("npixels",    &DeepData::pixels)   //DEPRECATED(1.7)
-        .def_readonly ("nchannels",  &DeepData::channels) //DEPRECATED(1.7)
-        .def_readonly ("pixels",     &DeepData::pixels)
-        .def_readonly ("channels",   &DeepData::channels)
+        .add_property ("npixels",    &DeepData::pixels)   //DEPRECATED(1.7)
+        .add_property ("nchannels",  &DeepData::channels) //DEPRECATED(1.7)
+        .add_property ("pixels",     &DeepData::pixels)
+        .add_property ("channels",   &DeepData::channels)
 
         .def("init",  &DeepData_init,
              (arg("npixels"), arg("nchannels"),
