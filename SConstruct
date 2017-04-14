@@ -279,6 +279,8 @@ if not rv:
     excons.PrintOnce("OIIO: Build bzip2 from sources ...")
     excons.Call("bzip2", imp=["BZ2Name", "BZ2Path"])
     bz2_static = excons.GetArgument("bz2-static", 1, int)
+    oiio_opts["BZIP2_LIBRARY"] = BZ2Path()
+    oiio_opts["BZIP2_INCLUDE_DIR"] = out_incdir
 
     freetype_overrides["with-bz2"] = base
     freetype_overrides["bz2-static"] = bz2_static
