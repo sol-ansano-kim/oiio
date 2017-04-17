@@ -87,7 +87,7 @@ oiio_opts["EXTRA_DSO_LINK_ARGS"] = ""
 jpeg_overrides["libjpeg-jpeg8"] = 1
 
 
-if sys.platform == "darwin":
+if sys.platform != "win32":
     oiio_opts["EXTRA_CPP_ARGS"] = " -Wno-deprecated-declarations"
 
 
