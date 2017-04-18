@@ -321,8 +321,10 @@ if not rv:
     oiio_opts["OCIO_LIBRARIES"] = OCIOPath(ocio_static)
     ext = ".lib" if sys.platform == "win32" else (".a" if ocio_static else ".so")
     libprf = "" if sys.platform == "win32" else "lib"
+    yaml_lib_path = YamlCppPath()
+    yaml_base = os.path.basename(yaml_lib_path)
     oiio_opts["LCMS2_LIBRARY"] = LCMS2Path()
-    oiio_opts["YAML_LIBRARY"] = YamlCppPath()
+    oiio_opts["YAML_LIBRARY"] = os.path.join(os.path.dirname(yaml_lib_path), yaml_base if yaml_base.startswith("lib") else "lib" + yaml_base)
     oiio_opts["TINYXML_LIBRARY"] = TinyXmlPath()
 else:
     ocio_outputs = []
