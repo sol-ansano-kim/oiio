@@ -376,3 +376,22 @@ def RequireOiio(env, static=False):
 
 Default("oiio")
 Export("OiioName OiioPath RequireOiio")
+
+# Ecosystem
+
+if "eco" in COMMAND_LINE_TARGETS:
+    ecoroot = "/" + excons.EcosystemPlatform()
+    outdir = excons.OutputBaseDirectory()
+    binext = (".exe" if sys.platform == "win32" else "")
+
+    tgts = {"oiio-lib": Glob(outdir + "/lib/*OpenImageIO*"),
+            "oiio-inc": Glob(outdir + "/include/OpenImageIO/*"),
+            "oiio-bin": map(lambda x: File(outdir + "/bin/" + x + binext), ["iconvert", "idiff", "igrep", "iinfo", "maketx", "oiiotool"]),
+            "oiio-python": Glob(outdir + "/lib/python/site-packages/*")}
+
+    tgtdirs = {"oiio-lib": ecoroot + "/lib",
+               "oiio-inc": ecoroot + "/include/OpenImageIO",
+               "oiio-bin": ecoroot + "/bin",
+               "oiio-python": ecoroot + "/lib/python/%s" % python_ver}
+
+    excons.EcosystemDist(env, "oiio.env", tgtdirs, targets=tgts, name="OpenImageIO", version="%d.%d.%d" % (major, minor, patch))
