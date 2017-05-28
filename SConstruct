@@ -13,6 +13,8 @@ patch = 12
 
 env = excons.MakeBaseEnv()
 staticlib = (excons.GetArgument("oiio-static", 0, int) != 0)
+simd = excons.GetArgument("oiio-simd", "0")
+verbose = (1 if excons.GetArgument("oiio-verbose", 0, int) != 0 else 0)
 out_basedir = excons.OutputBaseDirectory()
 out_incdir = excons.OutputBaseDirectory() + "/include"
 out_libdir = excons.OutputBaseDirectory() + "/lib"
@@ -37,7 +39,14 @@ oiio_opts["USE_CPP11"] = 1
 oiio_opts["USE_CPP14"] = 0
 oiio_opts["USE_LIBCPLUSPLUS"] = 0
 oiio_opts["USE_CCACHE"] = 0
+oiio_opts["CODECOV"] = 0
 oiio_opts["HIDE_SYMBOLS"] = 1
+oiio_opts["USE_SIMD"] = simd
+oiio_opts["INSTALL_SYSTEM_RUNTIME"] = 0
+oiio_opts["OIIO_BUILD_TESTS"] = 0
+oiio_opts["OIIO_BUILD_TOOLS"] = 1
+oiio_opts["EMBEDPLUGINS"] = 1
+oiio_opts["VERBOSE"] = verbose
 
 # python
 oiio_opts["PYLIB_INCLUDE_SONAME"] = 0
@@ -73,6 +82,16 @@ oiio_opts["USE_FREETYPE"] = 1
 oiio_opts["USE_LIBRAW"] = 1
 oiio_opts["USE_OCIO"] = 1
 oiio_opts["USE_FFMPEG"] = 0
+oiio_opts["USE_OPENCV"] = 0
+oiio_opts["USE_PTEX"] = 0
+oiio_opts["USE_GIF"] = 0
+oiio_opts["USE_JASPER"] = 0
+oiio_opts["USE_NUKE"] = 0
+oiio_opts["USE_OPENSSL"] = 0
+# Not building 'iv' so far
+oiio_opts["USE_QT"] = 0
+oiio_opts["USE_OPENGL"] = 0
+oiio_opts["FORCE_OPENGL_1"] = 0
 
 ## extra args
 oiio_opts["EXTRA_DSO_LINK_ARGS"] = ""
@@ -334,28 +353,11 @@ for k, v in oiio_opts.iteritems():
     if isinstance(v, basestring):
         oiio_opts[k] = v.replace("\\", "/")
 
-
-prjs.append({"name": "oiio",
-             "type": "cmake",
-             "cmake-opts": oiio_opts,
-             "cmake-cfgs": excons.CollectFiles(["src"], patterns=["CMakeLists.txt"], recursive=True) + ["CMakeLists.txt"] + oiio_dependecies,
-             "cmake-srcs": excons.CollectFiles(["src"], patterns=["*.cpp"], recursive=True)})
-
-
-excons.AddHelpOptions(oiio="""OpenImageIO OPTIONS
-    oiio-static=0|1   :  Toggle between static and shared library build [0]
-    """)
-
-
-excons.DeclareTargets(env, prjs)
-
-
 def OiioName(static=False):
     libname = "OpenImageIO"
     if sys.platform == "win32" and static:
         libname += "-static"
     return libname
-
 
 def OiioPath(static=False):
     name = OiioName(static=static)
@@ -363,18 +365,34 @@ def OiioPath(static=False):
         libname = name + ".lib"
     else:
         libname = "lib" + name + (".a" if static else excons.SharedLibraryLinkExt())
-
     return excons.OutputBaseDirectory() + "/lib/" + libname
-
 
 def RequireOiio(env, static=False):
     env.Append(CPPPATH=[excons.OutputBaseDirectory() + "/include"])
     env.Append(LIBPATH=[excons.OutputBaseDirectory() + "/lib"])
-
     excons.Link(env, OiioName(static=static), static=static, force=True, silent=True)
 
 
+prjs.append({"name": "oiio",
+             "type": "cmake",
+             "cmake-opts": oiio_opts,
+             "cmake-cfgs": excons.CollectFiles(["src"], patterns=["CMakeLists.txt"], recursive=True) + ["CMakeLists.txt"] + oiio_dependecies,
+             "cmake-srcs": excons.CollectFiles(["src"], patterns=["*.cpp"], recursive=True),
+             "cmake-outputs": map(lambda x: out_incdir + "/OpenImageIO/" + os.path.basename(x), excons.glob("src/include/OpenImageIO/*.h")) +
+                              [OiioPath(staticlib)]})
+
+excons.AddHelpOptions(oiio="""OpenImageIO OPTIONS
+  oiio-static=0|1        : Toggle between static and shared library build [0]
+  oiio-simd=0|<simd>     : Use SIMD directives [0]
+                           <simd> should be on of sse2, sse3, ssse3, sse4.1, sse4.2, avx, avx2, avx512f, f16c
+  oiio-verbose=0|1       : Print lots of messages while compiling [0]
+  oiio-python-dir=<path> : Python prefix ['']
+  oiio-python-ver=<ver>  : Python version ['2.7']""")
+
+excons.DeclareTargets(env, prjs)
+
 Default("oiio")
+
 Export("OiioName OiioPath RequireOiio")
 
 # Ecosystem
