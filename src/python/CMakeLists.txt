@@ -67,6 +67,9 @@ endif ()
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_definitions ("-Wno-array-bounds")
 endif ()
+if (UNIX)
+    add_definitions ("-DBOOST_PYTHON_USE_GCC_SYMBOL_VISIBILITY")
+endif ()
 
 if (BUILD_PY3)
     set (target_name Py3OpenImageIO)
@@ -128,6 +131,14 @@ if (BOOST_CUSTOM OR Boost_FOUND AND PYTHONLIBS_FOUND)
                                SUFFIX ".pyd")
     endif()
     
+    if (UNIX)
+        if (APPLE)
+            set_target_properties(${target_name} PROPERTIES INSTALL_RPATH "@loader_path/../..")
+        else ()
+            set_target_properties(${target_name} PROPERTIES INSTALL_RPATH "$ORIGIN/../..")
+        endif ()
+    endif()
+
     if (BUILD_PY3)
         install (TARGETS ${target_name}
                  RUNTIME DESTINATION ${PYLIB3_INSTALL_DIR} COMPONENT user

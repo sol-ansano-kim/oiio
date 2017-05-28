@@ -20,6 +20,13 @@ if (QT4_FOUND AND OPENGL_FOUND AND GLEW_FOUND)
     endif()
     add_executable (iv ${iv_srcs})
     set_target_properties (iv PROPERTIES FOLDER "Tools")
+    if (UNIX)
+        if (APPLE)
+            set_target_properties(iv PROPERTIES INSTALL_RPATH "@loader_path/../lib")
+        else ()
+            set_target_properties(iv PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
+        endif ()
+    endif()
     target_link_libraries (iv OpenImageIO ${QT_LIBRARIES} ${OPENGL_LIBRARIES} 
                                ${Boost_LIBRARIES} ${CMAKE_DL_LIBS}
                                ${GLEW_LIBRARIES})
