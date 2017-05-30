@@ -277,7 +277,7 @@ if (USE_LIBCPLUSPLUS AND CMAKE_COMPILER_IS_CLANG)
 endif ()
 
 set (USE_fPIC OFF CACHE BOOL "Build with -fPIC")
-if (USE_fPIC)
+if (USE_fPIC AND UNIX)
     add_definitions ("-fPIC")
 endif ()
 

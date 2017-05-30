@@ -450,8 +450,9 @@ if "eco" in COMMAND_LINE_TARGETS:
 
     tgts = {"oiio-lib": Glob(outdir + "/lib/*OpenImageIO*"),
             "oiio-inc": Glob(outdir + "/include/OpenImageIO/*"),
-            "oiio-bin": map(lambda x: File(outdir + "/bin/" + x + binext), ["iconvert", "idiff", "igrep", "iinfo", "maketx", "oiiotool"]),
-            "oiio-python": Glob(outdir + "/lib/python/site-packages/*")}
+            "oiio-bin": map(lambda x: File(outdir + "/bin/" + x + binext), ["iconvert", "idiff", "igrep", "iinfo", "maketx", "oiiotool"]) +
+                        ([] if sys.platform != "win32" else Glob(outdir + "/bin/*OpenImageIO*.dll")),
+            "oiio-python": Glob(outdir + ("/lib/python/site-packages/*" if sys.platform != "win32" else "/python"))}
 
     tgtdirs = {"oiio-lib": ecoroot + "/lib",
                "oiio-inc": ecoroot + "/include/OpenImageIO",
