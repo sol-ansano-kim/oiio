@@ -10,14 +10,30 @@ major = 1
 minor = 7
 patch = 12
 
-
 env = excons.MakeBaseEnv()
-staticlib = (excons.GetArgument("oiio-static", 0, int) != 0)
-simd = excons.GetArgument("oiio-simd", "0")
-verbose = (1 if excons.GetArgument("oiio-verbose", 0, int) != 0 else 0)
 out_basedir = excons.OutputBaseDirectory()
 out_incdir = excons.OutputBaseDirectory() + "/include"
 out_libdir = excons.OutputBaseDirectory() + "/lib"
+
+staticlib = (excons.GetArgument("oiio-static", 0, int) != 0)
+
+if sys.platform == "win32":
+    # sse2 is implied when building x64 binaries on windows
+    simd_directives = ["avx", "avx2"]
+else:
+    simd_directives = ["sse2", "sse3", "ssse3", "sse4.1", "sse4.2", "avx", "avx2", "avx512f", "f16c"]
+simd = excons.GetArgument("oiio-simd", "0")
+if simd != "0":
+    lst = simd.split(",")
+    if sys.platform == "win32":
+        lst = map(lambda x: x.lower(), lst)
+    lst = filter(lambda x: x in simd_directives, lst)
+    if sys.platform == "win32":
+        lst = map(lambda x: x.upper(), lst)
+    simd = ",".join(lst)
+
+verbose = (1 if excons.GetArgument("oiio-verbose", 0, int) != 0 else 0)
+
 python_dir = excons.GetArgument("oiio-python-dir", "", str)
 python_ver = excons.GetArgument("oiio-python-ver", "2.7", str)
 
@@ -97,11 +113,11 @@ if rv["require"]:
    if intver == 0:
       excons.WarnOnce("Cannot figure out Boost version from '%s'" % boost_vh, tool="OIIO")
       sys.exit(1)
-   strver = "%d.%d" % (intver / 100000, (intver / 100) % 1000)
+   strver = "%d_%d" % (intver / 100000, (intver / 100) % 1000)
 
    libsuffix = excons.GetArgument("boost-suffix", "")
    if sys.platform == "win32":
-      libsuffix += "-vc%d-mt-%s.lib" (int(excons.mscver * 10), strver)
+      libsuffix += "-vc%d-mt-%s.lib" % (int(float(excons.mscver) * 10), strver)
    else:
       libsuffix += ".a"
 
@@ -487,10 +503,11 @@ prjs.append({"name": "oiio",
 excons.AddHelpOptions(oiio="""OPENIMAGEIO OPTIONS
   oiio-static=0|1        : Toggle between static and shared library build [0]
   oiio-simd=0|<simd>     : Use SIMD directives [0]
-                           <simd> should be on of sse2, sse3, ssse3, sse4.1, sse4.2, avx, avx2, avx512f, f16c
+                           <simd> should be '0' or a comma separated list of desired SIMD directives.
+                           Known directives: %s
   oiio-verbose=0|1       : Print lots of messages while compiling [0]
   oiio-python-dir=<path> : Python prefix ['']
-  oiio-python-ver=<ver>  : Python version ['2.7']""")
+  oiio-python-ver=<ver>  : Python version ['2.7']""" % ", ".join(simd_directives))
 
 excons.DeclareTargets(env, prjs)
 
