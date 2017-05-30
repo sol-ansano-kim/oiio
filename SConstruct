@@ -113,20 +113,20 @@ if rv["require"]:
          sys.exit(1)
       libs.append(path)
 
-   pylib = rv["libdir"] + "/libboost_python" + libsuffix
-   if not os.path.isfile(pylib):
-      excons.WarnOnce("Invalid Boost python library '%s'" % pylib, tool="OIIO")
-      sys.exit(1)
-
    oiio_opts["BOOST_CUSTOM"] = 1
-   oiio_opts["BOOST_USE_MULTITHREADED"] = 1
-   oiio_opts["BOOST_USE_STATIC_LIBS"] = 1
-   oiio_opts["Boost_USE_STATIC_RUNTIME"] = 0
    oiio_opts["Boost_VERSION"] = intver
    oiio_opts["Boost_INCLUDE_DIRS"] = rv["incdir"]
    oiio_opts["Boost_LIBRARY_DIRS"] = rv["libdir"]
    oiio_opts["Boost_LIBRARIES"] = ";".join(libs)
-   oiio_opts["Boost_PYTHON_LIBRARIES"] = pylib
+
+   pylib = rv["libdir"] + "/libboost_python" + libsuffix
+   if os.path.isfile(pylib):
+      oiio_opts["boost_PYTHON_FOUND"] = 1
+      oiio_opts["Boost_PYTHON_LIBRARIES"] = pylib
+   else:
+      excons.WarnOnce("No valid Boost python found. Skipping python module.", tool="OIIO")
+      oiio_opts["boost_PYTHON_FOUND"] = 0   
+
 else:
    excons.WarnOnce("Boost is require to build OpenImageIO, please provide root directory using 'with-boost=' flag", tool="OIIO")
    sys.exit(1)
