@@ -72,7 +72,64 @@ if python_dir:
     oiio_opts["PYTHON_INCLUDE_DIR"] = python_dir + "/include"
 
 # boost
-oiio_opts["BOOST_ROOT"] = excons.GetArgument("with-boost", "", str)
+#   force static link
+ARGUMENTS["boost-static"] = "1"
+rv = excons.ExternalLibRequire("boost")
+if rv["require"]:
+   boost_vh = rv["incdir"] + "/boost/version.hpp"
+   if not os.path.isfile(boost_vh):
+      excons.WarnOnce("No such a file '%s'" % boost_vh, tool="OIIO")
+      sys.exit(1)
+
+   e = re.compile(r"define\s+BOOST_VERSION\s+([^\s]+)")
+   intver = 0
+   strver = ""
+   with open(boost_vh, "r") as f:
+      for l in f.readlines():
+         m = e.search(l)
+         if m:
+            try:
+               intver = int(m.group(1))
+               break
+            except:
+               intver = 0
+               pass
+   if intver == 0:
+      excons.WarnOnce("Cannot figure out Boost version from '%s'" % boost_vh, tool="OIIO")
+      sys.exit(1)
+   strver = "%d.%d" % (intver / 100000, (intver / 100) % 1000)
+
+   libsuffix = excons.GetArgument("boost-suffix", "")
+   if sys.platform == "win32":
+      libsuffix += "-vc%d-mt-%s.lib" (int(excons.mscver * 10), strver)
+   else:
+      libsuffix += ".a"
+
+   libs = []
+   for name in ["filesystem", "regex", "system", "thread"]:
+      path = rv["libdir"] + "/libboost_" + name + libsuffix
+      if not os.path.isfile(path):
+         excons.WarnOnce("Invalid Boost %s library '%s'" % (name, path), tool="OIIO")
+         sys.exit(1)
+      libs.append(path)
+
+   pylib = rv["libdir"] + "/libboost_python" + libsuffix
+   if not os.path.isfile(pylib):
+      excons.WarnOnce("Invalid Boost python library '%s'" % pylib, tool="OIIO")
+      sys.exit(1)
+
+   oiio_opts["BOOST_CUSTOM"] = 1
+   oiio_opts["BOOST_USE_MULTITHREADED"] = 1
+   oiio_opts["BOOST_USE_STATIC_LIBS"] = 1
+   oiio_opts["Boost_USE_STATIC_RUNTIME"] = 0
+   oiio_opts["Boost_VERSION"] = intver
+   oiio_opts["Boost_INCLUDE_DIRS"] = rv["incdir"]
+   oiio_opts["Boost_LIBRARY_DIRS"] = rv["libdir"]
+   oiio_opts["Boost_LIBRARIES"] = ";".join(libs)
+   oiio_opts["Boost_PYTHON_LIBRARIES"] = pylib
+else:
+   excons.WarnOnce("Boost is require to build OpenImageIO, please provide root directory using 'with-boost=' flag", tool="OIIO")
+   sys.exit(1)
 
 ## addtional
 oiio_opts["USE_FIELD3D"] = 0
@@ -427,7 +484,7 @@ prjs.append({"name": "oiio",
              "cmake-outputs": map(lambda x: out_incdir + "/OpenImageIO/" + os.path.basename(x), excons.glob("src/include/OpenImageIO/*.h")) +
                               [OiioPath(staticlib)]})
 
-excons.AddHelpOptions(oiio="""OpenImageIO OPTIONS
+excons.AddHelpOptions(oiio="""OPENIMAGEIO OPTIONS
   oiio-static=0|1        : Toggle between static and shared library build [0]
   oiio-simd=0|<simd>     : Use SIMD directives [0]
                            <simd> should be on of sse2, sse3, ssse3, sse4.1, sse4.2, avx, avx2, avx512f, f16c
