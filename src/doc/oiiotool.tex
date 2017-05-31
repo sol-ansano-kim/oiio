@@ -213,6 +213,16 @@ the following special names: \qkw{filename}, \qkw{file_extension},
 \item[{Arithmetic}] Sub-expressions may be joined by {\cf +}, {\cf -},
 {\cf *}, or {\cf /} for arithmetic operations. Parentheses are supported,
 and standard operator precedence applies.
+
+\item[{Special variables}] \spc
+
+\begin{itemize}
+\item {\cf FRAME_NUMBER} : the number of the frame in this iteration of
+    wildcard expansion.
+\item {\cf FRAME_NUMBER_PAD} : like {\cf FRAME_NUMBER}, but 0-padded based
+    on the value set on the command line by {\cf --framepadding}.
+\end{itemize}
+
 \end{description}
 
 To illustrate how this works, consider the following command, which trims
@@ -679,6 +689,32 @@ Prints information about each input image as it is read.  If verbose mode
 is turned on ({\cf -v}), all the metadata for the image is printed.
 If verbose mode is not turned on, only the resolution and data format
 are printed.
+\apiend
+
+\apiitem{{\ce --echo} {\rm \emph{message}}}
+\NEW % 1.8
+Prints the message to the console, at that point in the left-to-right
+execution of command line arguments.
+The message may contain expressions for substitution.
+
+\noindent Optional appended arguments include:
+
+\noindent
+\begin{tabular}{p{10pt} p{0.75in} p{4.0in}}
+  & {\cf newline=}\emph{n} & The number of newlines to print after the
+      message (default is 1, but 0 will suppress the newline, and a larger
+      number will make more vertical space. \\
+\end{tabular}
+
+\noindent Examples:
+
+\begin{code}
+    oiiotool test.tif --resize 256x0 --echo "result is {TOP.width}x{TOP.height}"
+\end{code}
+
+This will resize the input to be 256 pixels wide and automatically size
+it vertically to preserve the original aspect ratio, and then print
+a message to the console revealing the resolution of the resulting image.
 \apiend
 
 \apiitem{{\ce --metamatch} {\rm \emph{regex}} \\
@@ -2093,8 +2129,10 @@ The size is in the form
 \apiitem{\ce --resample {\rm \emph{size}}}
 Replace the current image with a new image that is resampled to the
 given pixel data resolution rapidly, but at a low quality, by simply
-copying the ``closest'' pixel.  The \emph{size} is in the form 
-\\ \spc\spc \emph{width}\,{\cf x}\,\emph{height}
+copying the ``closest'' pixel.  The \emph{size} is in the form
+\\ \spc\spc \emph{width}\,{\cf x}\,\emph{height}{\cf [+-]}\emph{xoffset}{\cf
+  [+-]}\emph{yoffset}
+\\ or~~~~ \spc \emph{xmin,ymin,xmax,ymax} \\
 \\ or~~~~ \spc \emph{scale}{\verb|%|} \\
 \\ or~~~~ \spc \emph{wscale}{\verb|%|}\,{\cf x}\,\emph{hscale}{\verb|%|} \\
 
@@ -2113,9 +2151,11 @@ automatically computed so as to preserve the original aspect ratio.
 \apiend
 
 \apiitem{\ce --resize {\rm \emph{size}}}
-Replace the current image with a new image that is resized to the 
-given pixel data resolution.  The \emph{size} is in the form 
-\\ \spc\spc \emph{width}\,{\cf x}\,\emph{height}
+Replace the current image with a new image whose display (full) size is
+the given pixel data resolution and offset.  The \emph{size} is in the form 
+\\ \spc\spc \emph{width}\,{\cf x}\,\emph{height}{\cf [+-]}\emph{xoffset}{\cf
+  [+-]}\emph{yoffset}
+\\ or~~~~ \spc \emph{xmin,ymin,xmax,ymax} \\
 \\ or~~~~ \spc \emph{scale}{\verb|%|} \\
 \\ or~~~~ \spc \emph{wscale}{\verb|%|}\,{\cf x}\,\emph{hscale}{\verb|%|} \\
 
@@ -2879,6 +2919,11 @@ See Section~\ref{sec:oiiotool:ch}
 \apiitem{\ce --crop {\rm \emph{size}}}
 Crop (adjust the pixel data window), removing pixels or adding empty pixels
 as needed.
+\apiend
+
+\apiitem{\ce --resample {\rm \emph{size}}}
+Resampling (resize without filtering or interpolation, just choosing the
+closest deep pixel to copy for each output pixel).
 \apiend
 
 \apiitem{\ce --diff}

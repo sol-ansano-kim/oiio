@@ -33,13 +33,14 @@
 #include <cstdio>
 #include <iostream>
 #include <vector>
-#include <map>
 #include <set>
 #include <algorithm>
 
 #include <boost/foreach.hpp>
+#include <boost/container/flat_map.hpp>
 
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/strutil.h>
 
 extern "C" {
 #include "tiff.h"
@@ -90,7 +91,13 @@ static size_t tiff_data_sizes[] = {
 static int
 tiff_data_size (const TIFFDirEntry &dir)
 {
-    return tiff_data_sizes[(int)dir.tdir_type] * dir.tdir_count;
+    const int num_data_sizes = sizeof(tiff_data_sizes) / sizeof(*tiff_data_sizes);
+    int dir_index = (int)dir.tdir_type;
+    if (dir_index < 0 || dir_index >= num_data_sizes) {
+        // Inform caller about corrupted entry.
+        return -1;
+    }
+    return tiff_data_sizes[dir_index] * dir.tdir_count;
 }
 
 
@@ -273,15 +280,19 @@ static const EXIF_tag_info gps_tag_table[] = {
 
 
 class TagMap {
-    typedef std::map<int, const EXIF_tag_info *> tagmap_t;
-    typedef std::map<string_view, const EXIF_tag_info *> namemap_t;
+    typedef boost::container::flat_map<int, const EXIF_tag_info *> tagmap_t;
+    typedef boost::container::flat_map<std::string, const EXIF_tag_info *> namemap_t;
+    // Name map is lower case so it's effectively case-insensitive
 public:
     TagMap (const EXIF_tag_info *tag_table) {
         for (int i = 0;  tag_table[i].tifftag >= 0;  ++i) {
             const EXIF_tag_info *eti = &tag_table[i];
             m_tagmap[eti->tifftag] = eti;
-            if (eti->name)
-                 m_namemap[string_view(eti->name)] = eti;
+            if (eti->name) {
+                std::string lowername (eti->name);
+                Strutil::to_lower (lowername);
+                m_namemap[lowername] = eti;
+            }
         }
     }
 
@@ -291,7 +302,9 @@ public:
     }
 
     const EXIF_tag_info * find (string_view name) const {
-        namemap_t::const_iterator i = m_namemap.find (name);
+        std::string lowername (name);
+        Strutil::to_lower (lowername);
+        namemap_t::const_iterator i = m_namemap.find (lowername);
         return i == m_namemap.end() ? NULL : i->second;
     }
 
@@ -311,7 +324,9 @@ public:
     }
 
     int tag (string_view name) const {
-        namemap_t::const_iterator i = m_namemap.find (name);
+        std::string lowername (name);
+        Strutil::to_lower (lowername);
+        namemap_t::const_iterator i = m_namemap.find (lowername);
         return i == m_namemap.end() ? -1 : i->second->tifftag;
     }
 
@@ -339,6 +354,10 @@ print_dir_entry (const TagMap &tagmap,
                  const TIFFDirEntry &dir, string_view buf)
 {
     int len = tiff_data_size (dir);
+    if (len < 0) {
+        std::cerr << "Ignoring bad directory entry\n";
+        return false;
+    }
     const char *mydata = NULL;
     if (len <= 4) {  // short data is stored in the offset field
         mydata = (const char *)&dir.tdir_offset;
@@ -384,6 +403,11 @@ print_dir_entry (const TagMap &tagmap,
     case TIFF_UNDEFINED :
     case TIFF_NOTYPE :
     default:
+        if (len <= 4 && dir.tdir_count > 4) {
+            // Request more data than is stored.
+            std::cerr << "Ignoring buffer with too much count of short data.\n";
+            return false;
+        }
         for (size_t i = 0;  i < dir.tdir_count;  ++i)
             std::cerr << (int)((unsigned char *)mydata)[i] << ' ';
         break;
@@ -503,6 +527,13 @@ read_exif_tag (ImageSpec &spec, const TIFFDirEntry *dirp,
                std::set<size_t> &ifd_offsets_seen,
                const TagMap &tagmap)
 {
+    if ((char*)dirp < buf.data() || (char*)dirp >= buf.data() + buf.size()) {
+#if DEBUG_EXIF_READ
+        std::cerr << "Ignoring directory outside of the buffer.\n";
+#endif
+        return;
+    }
+
     TagMap& exif_tagmap (exif_tagmap_ref());
     TagMap& gps_tagmap (gps_tagmap_ref());
 

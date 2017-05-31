@@ -1,3 +1,59 @@
+Release 1.7.14 (1 May 2017) -- compared to 1.7.13
+-------------------------------------------------
+* oiiotool expression substitution now recognizes FRAME_NUMBER and
+  FRAME_NUMBER_PAD. #1648
+* oiiotool -resize and -resample now have more intuitive behavior for images
+  where the display and pixel data windows are not the same, especially if
+  the data window had a nonzero origin (such as with crop or overscan).
+  #1667
+* oiiotool --resample and ImageBufAlgo::resample() have been extended to
+  work for "deep" images. #1668
+* ImageCache::get_image_info() will now return a proper error (and not hit
+  an assertion) if asked for information about a subimage or MIP level that
+  does not exist in the file. #1672
+* ImageBuf copy constructor from another ImageBuf was previously broken for
+  IB's that wrap application buffers. #1665
+* TextureSystem::get_texels fixes crashing behavior. #1669
+* Fixes to OSX rpath behavior of linked binaries. #1671
+* OpenEXR file input: fixed problem with sorting order of spectral alpha
+  channels (RA, GA, BA, or AR, AG, AB). #1674
+* ImageBufAlgo::deep_merge() (and oiiotool --deepmerge) now will give a
+  useful error message if you try to merge two deep images that do not have
+  the same number of channels. #1675
+* ImageCache/TextureSystem statistics no longer list as "BROKEN" files which
+  were invalidated, or files that were initialized with an ImageCacheFile
+  but never opened. #1655
+* Fix Windows warnings about SIMD types as function args, and about
+  int vs bool. #1659
+
+Release 1.7.13 (1 Apr 2017) -- compared to 1.7.12
+----------------------------------------------
+* TIFF, JPEG, others: Improved reading Exif meatdata from XMP blocks, now it
+  does a better job of discerning the proper data types. #1627
+* RAW: The default value for missing "raw:use_camera_matrix" has been changed
+  to 1 (not 0) to better match default behavior of libraw/dcraw. #1629
+* RAW: Add support for selecting new demosaicing algorithms: "DMT" (mode 11)
+  and "AAHD" (mode 12). Renamed the "Modified AHD" to "AHD-Mod" to
+  simplify and match libraw terminology. Made matching of demosaicing
+  algorithms case-insensitive. #1629
+* RAW: Support "ACES" color space for direct conversion while reading RAW
+  images (supported in libraw 0.18 or newer). #1626
+* oiiotool: Improved error reporting of file open errors when -iconfig is
+  used. #1626
+* oiiotool `--echo STRING` prints the string to the console. This can contain
+  expressions! So you can do something like
+      oiiotool file.exr -echo "Size is {TOP.width}x{TOP.height}"
+  #1633
+* JPEG: Be more reslient to malformed Exif data blocks with bogus offsets.
+  #1585, #1639
+* TIFF output omitted setting the "Make" and "Model" metadata tags. #1642
+* webp: Several new sanity checks prevent the webp reader from spending too
+  much I/O time and memory reading bogus files (malformed, corrupted,
+  or not a webp after all). #1640
+* PSD: Support has been added for "cmyk", "multichannel", and "grayscale"
+  color modes. And support was fixed for rgb and grayscale 32 bit per
+  sample bit depth. #1641
+
 Release 1.7.12 (1 Mar 2017) -- compared to 1.7.11
 ----------------------------------------------
 * BMP: add support for version 5 headers. #1616
@@ -505,7 +561,7 @@ Release 1.6.17 (released 1 Sep 2016 -- compared to 1.6.16)
 ------------------------------------------------
 * Fix build for newer ffmpeg release that deprecated functions.
 * Improved finding of OCIO installations. #1467
-* Fixed Sysutil::terminal_columns() for WIndows. #1640
+* Fixed Sysutil::terminal_columns() for WIndows. #1460
 * Fix build break in Windows when roundf function not found. #1468
 * Fix Filesystem::searchpath_find on Windows with UTF-8 paths. #1469
 

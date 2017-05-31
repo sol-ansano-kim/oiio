@@ -126,7 +126,7 @@ Oiiotool::Oiiotool ()
       total_imagecache_readtime (0.0),
       enable_function_timing(true),
       peak_memory(0),
-      num_outputs(0)
+      num_outputs(0), printed_info(false), frame_number(0)
 {
     clear_options ();
 }
@@ -153,6 +153,7 @@ Oiiotool::clear_options ()
     nativeread = false;
     cachesize = 4096;
     autotile = 4096;
+    frame_padding = 0;
     full_command_line.clear ();
     printinfo_metamatch.clear ();
     printinfo_nometamatch.clear ();
@@ -181,6 +182,8 @@ Oiiotool::clear_options ()
     diff_hardfail = std::numeric_limits<float>::max();
     m_pending_callback = NULL;
     m_pending_argc = 0;
+    frame_number = 0;
+    frame_padding = 0;
 }
 
 
@@ -932,7 +935,17 @@ Oiiotool::express_parse_atom(const string_view expr, string_view& s, std::string
         }
     } else if (Strutil::parse_float (s, floatval)) {
         result = Strutil::format ("%g", floatval);
-    } else {
+    }
+    // Test some special identifiers
+    else if (Strutil::parse_identifier_if (s, "FRAME_NUMBER")) {
+        result = Strutil::format ("%d", ot.frame_number);
+    }
+    else if (Strutil::parse_identifier_if (s, "FRAME_NUMBER_PAD")) {
+        std::string fmt = ot.frame_padding == 0 ? std::string("%d")
+                                : Strutil::format ("\"%%0%dd\"", ot.frame_padding);
+        result = Strutil::format (fmt.c_str(), ot.frame_number);
+    }
+    else {
         express_error (expr, s, "syntax error");
         result = orig;
         return false;
@@ -963,7 +976,10 @@ Oiiotool::express_parse_factors(const string_view expr, string_view& s, std::str
         return false;
     }
 
-    if (Strutil::string_is<float> (atom)) {
+    if (atom.size() >= 2 && atom[0] == '\"' && atom[atom.size()-1] == '\"') {
+        // Double quoted is string, return it
+        result = atom;
+    } else if (Strutil::string_is<float> (atom)) {
         // lval is a number
         lval = Strutil::from_string<float> (atom);
         while (s.size()) {
@@ -1026,7 +1042,10 @@ Oiiotool::express_parse_summands(const string_view expr, string_view& s, std::st
         return false;
     }
 
-    if (Strutil::string_is<float> (atom)) {
+    if (atom.size() >= 2 && atom[0] == '\"' && atom[atom.size()-1] == '\"') {
+        // Double quoted is string, strip it
+        result = atom.substr (1, atom.size()-2);
+    } else if (Strutil::string_is<float> (atom)) {
         // lval is a number
         lval = Strutil::from_string<float> (atom);
         while (s.size()) {
@@ -2984,22 +3003,26 @@ public:
         : OiiotoolOp (ot, opname, argc, argv, 1) { }
     virtual int compute_subimages () { return 1; } // just the first one
     virtual bool setup () {
+        // The size argument will be the resulting display (full) window.
         const ImageSpec &Aspec (*ir[1]->spec(0,0));
         ImageSpec newspec = Aspec;
-        ot.adjust_geometry (args[0], newspec.width, newspec.height,
-                            newspec.x, newspec.y, args[1].c_str() /*size*/, true);
-        if (newspec.width == Aspec.width && newspec.height == Aspec.height) {
+        ot.adjust_geometry (args[0], newspec.full_width, newspec.full_height,
+                            newspec.full_x, newspec.full_y,
+                            args[1].c_str() /*size*/, true);
+        if (newspec.full_width == Aspec.full_width &&
+            newspec.full_height == Aspec.full_height) {
             // No change -- pop the temp result and restore the original
             ot.pop ();
             ot.push (ir[1]);
             return false;   // nothing more to do
         }
-        // Shrink-wrap full to match actual pixels; I'm not sure what else
-        // is appropriate, need to think it over.
-        newspec.full_x = newspec.x;
-        newspec.full_y = newspec.y;
-        newspec.full_width = newspec.width;
-        newspec.full_height = newspec.height;
+        // Compute corresponding data window.
+        float wratio = float(newspec.full_width) / float(Aspec.full_width);
+        float hratio = float(newspec.full_height) / float(Aspec.full_height);
+        newspec.x = newspec.full_x + int(floorf ((Aspec.x - Aspec.full_x) * wratio));
+        newspec.y = newspec.full_y + int(floorf ((Aspec.y - Aspec.full_y) * hratio));
+        newspec.width = int(ceilf (Aspec.width * wratio));
+        newspec.height = int(ceilf (Aspec.height * hratio));
         (*ir[0])(0,0).reset (newspec);
         return true;
     }
@@ -3018,22 +3041,26 @@ public:
         : OiiotoolOp (ot, opname, argc, argv, 1) { }
     virtual int compute_subimages () { return 1; } // just the first one
     virtual bool setup () {
+        // The size argument will be the resulting display (full) window.
         const ImageSpec &Aspec (*ir[1]->spec(0,0));
         ImageSpec newspec = Aspec;
-        ot.adjust_geometry (args[0], newspec.width, newspec.height,
-                            newspec.x, newspec.y, args[1].c_str() /*size*/, true);
-        if (newspec.width == Aspec.width && newspec.height == Aspec.height) {
+        ot.adjust_geometry (args[0], newspec.full_width, newspec.full_height,
+                            newspec.full_x, newspec.full_y,
+                            args[1].c_str() /*size*/, true);
+        if (newspec.full_width == Aspec.full_width &&
+            newspec.full_height == Aspec.full_height) {
             // No change -- pop the temp result and restore the original
             ot.pop ();
             ot.push (ir[1]);
             return false;   // nothing more to do
         }
-        // Shrink-wrap full to match actual pixels; I'm not sure what else
-        // is appropriate, need to think it over.
-        newspec.full_x = newspec.x;
-        newspec.full_y = newspec.y;
-        newspec.full_width = newspec.width;
-        newspec.full_height = newspec.height;
+        // Compute corresponding data window.
+        float wratio = float(newspec.full_width) / float(Aspec.full_width);
+        float hratio = float(newspec.full_height) / float(Aspec.full_height);
+        newspec.x = newspec.full_x + int(floorf ((Aspec.x - Aspec.full_x) * wratio));
+        newspec.y = newspec.full_y + int(floorf ((Aspec.y - Aspec.full_y) * hratio));
+        newspec.width = int(ceilf (Aspec.width * wratio));
+        newspec.height = int(ceilf (Aspec.height * hratio));
         (*ir[0])(0,0).reset (newspec);
         return true;
     }
@@ -3973,7 +4000,12 @@ input_file (int argc, const char *argv[])
             // that information.
             ustring fn (filename);
             ot.imagecache->invalidate (fn);
-            ot.imagecache->add_file (fn, NULL, &ot.input_config);
+            bool ok = ot.imagecache->add_file (fn, NULL, &ot.input_config);
+            if (!ok) {
+                std::string err = ot.imagecache->geterror();
+                ot.error ("read", err.size() ? err : "(unknown error)");
+                exit (1);
+            }
         }
         if (! ot.imagecache->get_image_info (ustring(filename), 0, 0,
                             ustring("exists"), TypeDesc::TypeInt, &exists)
@@ -4455,6 +4487,28 @@ output_file (int argc, const char *argv[])
 
 
 
+static int
+do_echo (int argc, const char *argv[])
+{
+    ASSERT (argc == 2);
+
+    string_view command = ot.express (argv[0]);
+    string_view message = ot.express (argv[1]);
+
+    std::map<std::string,std::string> options;
+    options["newline"] = "1";
+    ot.extract_options (options, command);
+    int newline = Strutil::from_string<int>(options["newline"]);
+
+    std::cout << message;
+    for (int i = 0; i < newline; ++i)
+        std::cout << '\n';
+    // ot.printed_info = true;
+    return 0;
+}
+
+
+
 // Concatenate the command line into one string, optionally filtering out
 // verbose attribute commands.
 static std::string
@@ -4605,10 +4659,11 @@ getargs (int argc, char *argv[])
                 "-v", &ot.verbose, "Verbose status messages",
                 "-q %!", &ot.verbose, "Quiet mode (turn verbose off)",
                 "-n", &ot.dryrun, "No saved output (dry run)",
+                "-a", &ot.allsubimages, "Do operations on all subimages/miplevels",
                 "--debug", &ot.debug, "Debug mode",
                 "--runstats", &ot.runstats, "Print runtime statistics",
-                "-a", &ot.allsubimages, "Do operations on all subimages/miplevels",
                 "--info", &ot.printinfo, "Print resolution and metadata on all inputs",
+                "--echo %@ %s", do_echo, NULL, "Echo message to console (options: newline=0)",
                 "--metamatch %s", &ot.printinfo_metamatch,
                     "Regex: which metadata is printed with -info -v",
                 "--no-metamatch %s", &ot.printinfo_nometamatch,
@@ -4625,7 +4680,7 @@ getargs (int argc, char *argv[])
                 "--noclobber", &ot.noclobber, "", // synonym
                 "--threads %@ %d", set_threads, NULL, "Number of threads (default 0 == #cores)",
                 "--frames %s", NULL, "Frame range for '#' or printf-style wildcards",
-                "--framepadding %d", NULL, "Frame number padding digits (ignored when using printf-style wildcards)",
+                "--framepadding %d", &ot.frame_padding, "Frame number padding digits (ignored when using printf-style wildcards)",
                 "--views %s", NULL, "Views for %V/%v wildcards (comma-separated, defaults to left,right)",
                 "--wildcardoff", NULL, "Disable numeric wildcard expansion for subsequent command line arguments",
                 "--wildcardon", NULL, "Enable numeric wildcard expansion for subsequent command line arguments",
@@ -4996,6 +5051,7 @@ handle_sequence (int argc, const char **argv)
     // OK, now we just call getargs once for each item in the sequences,
     // substituting the i-th sequence entry for its respective argument
     // every time.
+    // Note: nfilenames really means, number of frame number iterations.
     std::vector<const char *> seq_argv (argv, argv+argc+1);
     for (size_t i = 0;  i < nfilenames;  ++i) {
         if (ot.debug)
@@ -5008,6 +5064,7 @@ handle_sequence (int argc, const char **argv)
         }
 
         ot.clear_options (); // Careful to reset all command line options!
+        ot.frame_number = frame_numbers[sequence_args[0]][i];
         getargs (argc, (char **)&seq_argv[0]);
 
         ot.process_pending ();

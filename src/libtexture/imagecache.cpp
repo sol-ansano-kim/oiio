@@ -1911,7 +1911,7 @@ ImageCacheImpl::getstats (int level) const
         }
         int nbroken = 0;
         BOOST_FOREACH (const ImageCacheFileRef &file, files) {
-            if (file->broken() || !file->validspec())
+            if (file->broken())
                 ++nbroken;
         }
         out << "  Broken or invalid files: " << nbroken << "\n";
@@ -1919,7 +1919,7 @@ ImageCacheImpl::getstats (int level) const
             std::sort (files.begin(), files.end(), filename_compare);
             int nprinted = 0;
             BOOST_FOREACH (const ImageCacheFileRef &file, files) {
-                if (file->broken() || !file->validspec()) {
+                if (file->broken()) {
                     ++nprinted;
                     out << Strutil::format ("   %4d  %s\n", nprinted, file->filename());
                 }
@@ -2524,7 +2524,22 @@ ImageCacheImpl::get_image_info (ImageCacheFile *file,
         *(int *)data = file->subimages();
         return true;
     }
-    
+
+    // Make sure we have a valid subimage and miplevel BEFORE we get a
+    // reference to the spec.
+    if (subimage < 0 || subimage >= file->subimages()) {
+        if (file->errors_should_issue())
+            error ("Unknown subimage %d (out of %d)",
+                   subimage, file->subimages());
+        return false;
+    }
+    if (miplevel < 0 || miplevel >= file->miplevels(subimage)) {
+        if (file->errors_should_issue())
+            error ("Unknown mip level %d (out of %d)",
+                   miplevel, file->miplevels(subimage));
+        return false;
+    }
+
     const ImageSpec &spec (file->spec(subimage,miplevel));
     if (dataname == s_resolution && datatype==TypeDesc(TypeDesc::INT,2)) {
         int *d = (int *)data;
