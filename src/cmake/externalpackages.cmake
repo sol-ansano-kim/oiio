@@ -438,6 +438,9 @@ include_directories (${JPEG_INCLUDE_DIR})
 # OpenJpeg
 if (USE_OPENJPEG)
     find_package (OpenJpeg)
+    if (LINKSTATIC AND CMAKE_SYSTEM_NAME MATCHES "Windows")
+            add_definitions ("-DOPJ_STATIC")
+    endif()
 endif()
 # end OpenJpeg setup
 ###########################################################################

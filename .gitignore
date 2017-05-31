@@ -16,3 +16,5 @@ excons.cache
 *.automake.*
 .sconf_temp
 config.log
+eco/
+oiio.env.tmp
