@@ -8,7 +8,7 @@ import glob
 
 major = 1
 minor = 7
-patch = 12
+patch = 14
 
 env = excons.MakeBaseEnv()
 out_basedir = excons.OutputBaseDirectory()

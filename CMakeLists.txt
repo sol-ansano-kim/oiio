@@ -3,7 +3,7 @@ project (OpenImageIO)
 # Release version of the library
 set (OIIO_VERSION_MAJOR 1)
 set (OIIO_VERSION_MINOR 7)
-set (OIIO_VERSION_PATCH 12)
+set (OIIO_VERSION_PATCH 14)
 set (OIIO_VERSION_RELEASE_TYPE "")   # "dev", "betaX", "RCY", ""
 
 cmake_minimum_required (VERSION 2.6)
@@ -14,6 +14,7 @@ if (NOT CMAKE_VERSION VERSION_LESS 3.0)
     cmake_policy (SET CMP0025 NEW)  # Detect AppleClang for new CMake
 endif ()
 if (NOT CMAKE_VERSION VERSION_LESS 3.2.2)
+    cmake_policy (SET CMP0014 OLD)
     cmake_policy (SET CMP0042 OLD)
     cmake_policy (SET CMP0046 OLD)
 endif ()
@@ -586,7 +587,9 @@ oiio_add_tests (
                 oiiotool-subimage oiiotool-text
                 maketx oiiotool-maketx
                 dither dup-channels
-                dpx ico iff png psd rla sgi
+                dpx ico iff png
+                psd psd-colormodes
+                rla sgi
                 python-typedesc python-imagespec python-roi python-deep
                 python-imageinput python-imageoutput
                 python-imagebuf python-imagebufalgo
@@ -594,7 +597,7 @@ oiio_add_tests (
                 texture-blurtube
                 texture-crop texture-cropover
                 texture-derivs texture-fill texture-filtersize
-                texture-flipt texture-gray
+                texture-flipt texture-gettexels texture-gray
                 texture-mip-nomip texture-mip-trilinear
                 texture-overscan texture-pointsample
                 texture-uint8
