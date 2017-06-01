@@ -461,7 +461,6 @@ else ()
         endif ()
     endif ()
 endif ()
-set (MACOSX_RPATH ON)
 
 
 if (MSVC)
