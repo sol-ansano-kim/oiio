@@ -346,9 +346,6 @@ public:
     /// Default constructor (contents undefined)
     bool4 () { }
 
-    /// Destructor
-    ~bool4 () { }
-
     /// Construct from a single value (store it in all slots)
     bool4 (bool a) { load(a); }
 
@@ -474,9 +471,6 @@ public:
 
     /// Default constructor (contents undefined)
     bool8 () { }
-
-    /// Destructor
-    ~bool8 () { }
 
     /// Construct from a single value (store it in all slots)
     bool8 (bool a) { load (a); }
@@ -616,9 +610,6 @@ public:
 
     /// Default constructor (contents undefined)
     int4 () { }
-
-    /// Destructor
-    ~int4 () { }
 
     /// Construct from a single value (store it in all slots)
     int4 (int a);
@@ -801,15 +792,17 @@ int reduce_and (const int4& v);
 int reduce_or (const int4& v);
 
 /// Use a bool mask to select between components of a (if mask[i] is false)
-/// and b (if mask[i] is true).
+/// and b (if mask[i] is true), i.e., mask[i] ? b[i] : a[i].
 int4 blend (const int4& a, const int4& b, const bool4& mask);
 
-/// Use a bool mask to select between components of a (if mask[i] is true)
-/// or 0 (if mask[i] is true).
+/// Use a bool mask to select between `a` (if mask[i] is true) or 0 if
+/// mask[i] is false), i.e., mask[i] ? a[i] : 0. Equivalent to
+/// blend(0,a,mask).
 int4 blend0 (const int4& a, const bool4& mask);
 
-/// Use a bool mask to select between components of a (if mask[i] is FALSE)
-/// or 0 (if mask[i] is TRUE).
+/// Use a bool mask to select between components of a (if mask[i] is false)
+/// or 0 (if mask[i] is true), i.e., mask[i] ? 0 : a[i]. Equivalent to
+/// blend(0,a,!mask), or blend(a,0,mask).
 int4 blend0not (const int4& a, const bool4& mask);
 
 /// Select 'a' where mask is true, 'b' where mask is false. Sure, it's a
@@ -856,9 +849,6 @@ public:
 
     /// Default constructor (contents undefined)
     int8 () { }
-
-    /// Destructor
-    ~int8 () { }
 
     /// Construct from a single value (store it in all slots)
     int8 (int a);
@@ -1055,15 +1045,17 @@ int reduce_and (const int8& v);
 int reduce_or (const int8& v);
 
 /// Use a bool mask to select between components of a (if mask[i] is false)
-/// and b (if mask[i] is true).
+/// and b (if mask[i] is true), i.e., mask[i] ? b[i] : a[i].
 int8 blend (const int8& a, const int8& b, const bool8& mask);
 
-/// Use a bool mask to select between components of a (if mask[i] is true)
-/// or 0 (if mask[i] is true).
+/// Use a bool mask to select between `a` (if mask[i] is true) or 0 if
+/// mask[i] is false), i.e., mask[i] ? a[i] : 0. Equivalent to
+/// blend(0,a,mask).
 int8 blend0 (const int8& a, const bool8& mask);
 
-/// Use a bool mask to select between components of a (if mask[i] is FALSE)
-/// or 0 (if mask[i] is TRUE).
+/// Use a bool mask to select between components of a (if mask[i] is false)
+/// or 0 (if mask[i] is true), i.e., mask[i] ? 0 : a[i]. Equivalent to
+/// blend(0,a,!mask), or blend(a,0,mask).
 int8 blend0not (const int8& a, const bool8& mask);
 
 /// Select 'a' where mask is true, 'b' where mask is false. Sure, it's a
@@ -1106,9 +1098,6 @@ public:
 
     /// Default constructor (contents undefined)
     float4 () { }
-
-    /// Destructor
-    ~float4 () { }
 
     /// Construct from a single value (store it in all slots)
     float4 (float a) { load(a); }
@@ -1331,15 +1320,17 @@ float4 vdot3 (const float4 &a, const float4 &b);
 float dot3 (const float4 &a, const float4 &b);
 
 /// Use a bool mask to select between components of a (if mask[i] is false)
-/// and b (if mask[i] is true).
+/// and b (if mask[i] is true), i.e., mask[i] ? b[i] : a[i].
 float4 blend (const float4& a, const float4& b, const bool4& mask);
 
-/// Use a bool mask to select between components of a (if mask[i] is true)
-/// or 0 (if mask[i] is true).
+/// Use a bool mask to select between `a` (if mask[i] is true) or 0 if
+/// mask[i] is false), i.e., mask[i] ? a[i] : 0. Equivalent to
+/// blend(0,a,mask).
 float4 blend0 (const float4& a, const bool4& mask);
 
-/// Use a bool mask to select between components of a (if mask[i] is FALSE)
-/// or 0 (if mask[i] is TRUE).
+/// Use a bool mask to select between components of a (if mask[i] is false)
+/// or 0 (if mask[i] is true), i.e., mask[i] ? 0 : a[i]. Equivalent to
+/// blend(0,a,!mask), or blend(a,0,mask).
 float4 blend0not (const float4& a, const bool4& mask);
 
 /// "Safe" divide of float4/float4 -- for any component of the divisor
@@ -1412,9 +1403,6 @@ public:
 
     /// Default constructor (contents undefined)
     float3 () { }
-
-    /// Destructor
-    ~float3 () { }
 
     /// Construct from a single value (store it in all slots)
     float3 (float a) { load(a); }
@@ -1664,9 +1652,6 @@ public:
     /// Default constructor (contents undefined)
     float8 () { }
 
-    /// Destructor
-    ~float8 () { }
-
     /// Construct from a single value (store it in all slots)
     float8 (float a) { load(a); }
 
@@ -1863,15 +1848,17 @@ float8 vdot3 (const float8 &a, const float8 &b);
 float dot3 (const float8 &a, const float8 &b);
 
 /// Use a bool mask to select between components of a (if mask[i] is false)
-/// and b (if mask[i] is true).
+/// and b (if mask[i] is true), i.e., mask[i] ? b[i] : a[i].
 float8 blend (const float8& a, const float8& b, const bool4& mask);
 
-/// Use a bool mask to select between components of a (if mask[i] is true)
-/// or 0 (if mask[i] is true).
+/// Use a bool mask to select between `a` (if mask[i] is true) or 0 if
+/// mask[i] is false), i.e., mask[i] ? a[i] : 0. Equivalent to
+/// blend(0,a,mask).
 float8 blend0 (const float8& a, const bool4& mask);
 
-/// Use a bool mask to select between components of a (if mask[i] is FALSE)
-/// or 0 (if mask[i] is TRUE).
+/// Use a bool mask to select between components of a (if mask[i] is false)
+/// or 0 (if mask[i] is true), i.e., mask[i] ? 0 : a[i]. Equivalent to
+/// blend(0,a,!mask), or blend(a,0,mask).
 float8 blend0not (const float8& a, const bool4& mask);
 
 /// "Safe" divide of float8/float8 -- for any component of the divisor
