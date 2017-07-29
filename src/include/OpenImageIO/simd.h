@@ -349,7 +349,7 @@ public:
     /// Construct from a single value (store it in all slots)
     bool4 (bool a) { load(a); }
 
-    explicit bool4 (bool *a);
+    explicit bool4 (const bool *a);
 
     /// Construct from 4 values
     bool4 (bool a, bool b, bool c, bool d) { load (a, b, c, d); }
@@ -386,9 +386,10 @@ public:
     int operator[] (int i) const;
 
     /// Component access (set).
-    /// NOTE: use with caution. The implementation sets the integer
-    /// value, which may not have the same bit pattern as the bool returned
-    /// by operator[]const.
+    void setcomp (int i, bool value);
+
+    /// Component access (set).
+    /// NOTE: avoid this unsafe construct. It will go away some day.
     int& operator[] (int i);
 
     /// Helper: load a single value into all components.
@@ -459,7 +460,7 @@ bool none (const bool4& v);
 
 /// bool8: An 8-vector whose elements act mostly like bools, accelerated by
 /// SIMD instructions when available. This is what is naturally produced by
-/// SIMD comparison operators on the float4 and int4 types.
+/// SIMD comparison operators on the float8 and int8 types.
 class bool8 {
 public:
     static const char* type_name() { return "bool8"; }
@@ -475,7 +476,7 @@ public:
     /// Construct from a single value (store it in all slots)
     bool8 (bool a) { load (a); }
 
-    explicit bool8 (bool *values);
+    explicit bool8 (const bool *values);
 
     /// Construct from 8 values
     bool8 (bool a, bool b, bool c, bool d, bool e, bool f, bool g, bool h);
@@ -515,9 +516,10 @@ public:
     int operator[] (int i) const;
 
     /// Component access (set).
-    /// NOTE: use with caution. The implementation sets the integer
-    /// value, which may not have the same bit pattern as the bool returned
-    /// by operator[]const.
+    void setcomp (int i, bool value);
+
+    /// Component access (set).
+    /// NOTE: avoid this unsafe construct. It will go away some day.
     int& operator[] (int i);
 
     /// Extract the lower percision bool4
@@ -540,7 +542,6 @@ public:
     void store (bool *values, int n) const;
 
     /// Logical/bitwise operators, component-by-component
-    friend bool4 operator! (const bool4& a);
     friend bool8 operator! (const bool8& a);
     friend bool8 operator& (const bool8& a, const bool8& b);
     friend bool8 operator| (const bool8& a, const bool8& b);
@@ -842,7 +843,7 @@ public:
     typedef int value_t;      ///< Underlying equivalent scalar value type
     enum { elements = 8 };    ///< Number of scalar elements
     enum { paddedelements =8 }; ///< Number of scalar elements for full pad
-    enum { bits = 128 };      ///< Total number of bits
+    enum { bits = elements*32 }; ///< Total number of bits
     typedef simd_raw_t<int,elements>::type simd_t;  ///< the native SIMD type used
     typedef bool8 bool_t; ///< bool type of the same length
     typedef float8 float_t; ///< float type of the same length
@@ -1655,11 +1656,11 @@ public:
     /// Construct from a single value (store it in all slots)
     float8 (float a) { load(a); }
 
-    /// Construct from 3 or 4 values
+    /// Construct from 8 values
     float8 (float a, float b, float c, float d,
             float e, float f, float g, float h) { load(a,b,c,d,e,f,g,h); }
 
-    /// Construct from a pointer to 4 values
+    /// Construct from a pointer to 8 values
     float8 (const float *f) { load (f); }
 
     /// Copy construct from another float8
@@ -1740,31 +1741,31 @@ public:
     /// Helper: load a single value into all components
     void load (float val);
 
-    /// Helper: load 3 or 4 values. (If 3 are supplied, the 4th will be 0.)
+    /// Helper: load 8 values
     void load (float a, float b, float c, float d,
                float e, float f, float g, float h);
 
     /// Load from an array of values
     void load (const float *values);
 
-    /// Load from a partial array of <=4 values. Unassigned values are
+    /// Load from a partial array of <=8 values. Unassigned values are
     /// undefined.
     void load (const float *values, int n);
 
-    /// Load from an array of 4 unsigned short values, convert to float
+    /// Load from an array of 8 unsigned short values, convert to float
     void load (const unsigned short *values);
 
-    /// Load from an array of 4 short values, convert to float
+    /// Load from an array of 8 short values, convert to float
     void load (const short *values);
 
-    /// Load from an array of 4 unsigned char values, convert to float
+    /// Load from an array of 8 unsigned char values, convert to float
     void load (const unsigned char *values);
 
-    /// Load from an array of 4 char values, convert to float
+    /// Load from an array of 8 char values, convert to float
     void load (const char *values);
 
 #ifdef _HALF_H_
-    /// Load from an array of 4 half values, convert to float
+    /// Load from an array of 8 half values, convert to float
     void load (const half *values);
 #endif /* _HALF_H_ */
 
@@ -1849,17 +1850,17 @@ float dot3 (const float8 &a, const float8 &b);
 
 /// Use a bool mask to select between components of a (if mask[i] is false)
 /// and b (if mask[i] is true), i.e., mask[i] ? b[i] : a[i].
-float8 blend (const float8& a, const float8& b, const bool4& mask);
+float8 blend (const float8& a, const float8& b, const bool8& mask);
 
 /// Use a bool mask to select between `a` (if mask[i] is true) or 0 if
 /// mask[i] is false), i.e., mask[i] ? a[i] : 0. Equivalent to
 /// blend(0,a,mask).
-float8 blend0 (const float8& a, const bool4& mask);
+float8 blend0 (const float8& a, const bool8& mask);
 
 /// Use a bool mask to select between components of a (if mask[i] is false)
 /// or 0 (if mask[i] is true), i.e., mask[i] ? 0 : a[i]. Equivalent to
 /// blend(0,a,!mask), or blend(a,0,mask).
-float8 blend0not (const float8& a, const bool4& mask);
+float8 blend0not (const float8& a, const bool8& mask);
 
 /// "Safe" divide of float8/float8 -- for any component of the divisor
 /// that is 0, return 0 rather than Inf.
@@ -1947,6 +1948,12 @@ OIIO_FORCEINLINE int& bool4::operator[] (int i) {
 }
 
 
+OIIO_FORCEINLINE void bool4::setcomp (int i, bool value) {
+    DASSERT(i >= 0 && i < elements);
+    m_val[i] = value ? -1 : 0;
+}
+
+
 OIIO_FORCEINLINE std::ostream& operator<< (std::ostream& cout, const bool4& a) {
     cout << a[0];
     for (int i = 1; i < a.elements; ++i)
@@ -1978,7 +1985,7 @@ OIIO_FORCEINLINE void bool4::load (bool a, bool b, bool c, bool d) {
 #endif
 }
 
-OIIO_FORCEINLINE bool4::bool4 (bool *a) {
+OIIO_FORCEINLINE bool4::bool4 (const bool *a) {
     load (a[0], a[1], a[2], a[3]);
 }
 
@@ -2227,6 +2234,11 @@ OIIO_FORCEINLINE int bool8::operator[] (int i) const {
 #endif
 }
 
+OIIO_FORCEINLINE void bool8::setcomp (int i, bool value) {
+    DASSERT(i >= 0 && i < elements);
+    m_val[i] = value ? -1 : 0;
+}
+
 OIIO_FORCEINLINE int& bool8::operator[] (int i) {
     DASSERT(i >= 0 && i < elements);
     return m_val[i];
@@ -2275,7 +2287,7 @@ OIIO_FORCEINLINE bool8::bool8 (bool a, bool b, bool c, bool d,
     load (a, b, c, d, e, f, g, h);
 }
 
-OIIO_FORCEINLINE bool8::bool8 (bool *a) {
+OIIO_FORCEINLINE bool8::bool8 (const bool *a) {
     load (a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
 }
 
