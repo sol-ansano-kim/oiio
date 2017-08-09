@@ -117,6 +117,12 @@ private:
     bool put_parameter (const std::string &name, TypeDesc type,
                         const void *data);
     bool write_exif_data ();
+
+    // Make our best guess about whether the spec is describing data that
+    // is in true CMYK values.
+    bool source_is_cmyk (const ImageSpec &spec);
+    // Are we fairly certain that the spec is describing RGB values?
+    bool source_is_rgb (const ImageSpec &spec);
 };
 
 
@@ -388,7 +394,7 @@ TIFFOutput::open (const std::string &name, const ImageSpec &userspec,
     TIFFSetField (m_tif, TIFFTAG_BITSPERSAMPLE, m_bitspersample);
     TIFFSetField (m_tif, TIFFTAG_SAMPLEFORMAT, sampformat);
 
-    m_photometric = (m_spec.nchannels > 1 ? PHOTOMETRIC_RGB : PHOTOMETRIC_MINISBLACK);
+    m_photometric = (m_spec.nchannels >= 3 ? PHOTOMETRIC_RGB : PHOTOMETRIC_MINISBLACK);
 
     string_view comp = m_spec.get_string_attribute("Compression", "zip");
     if (Strutil::iequals (comp, "jpeg") &&
@@ -434,34 +440,57 @@ TIFFOutput::open (const std::string &name, const ImageSpec &userspec,
         // There are a few ways in which we allow allow the user to specify
         // translation to different photometric types.
         string_view photo = m_spec.get_string_attribute("tiff:ColorSpace");
-        if (Strutil::iequals (photo, "CMYK")) {
-            // CMYK: force to 4 channel output, either uint8 or uint16
+        if (Strutil::iequals (photo, "CMYK") ||
+            Strutil::iequals (photo, "color separated")) {
+            // User has requested via the "tiff:ColorSpace" attribute that
+            // the file be written as color separated channels.
             m_photometric = PHOTOMETRIC_SEPARATED;
-            m_outputchans = 4;
-            TIFFSetField (m_tif, TIFFTAG_SAMPLESPERPIXEL, m_outputchans);
             if (m_spec.format != TypeDesc::UINT8 || m_spec.format != TypeDesc::UINT16) {
                 m_spec.format = TypeDesc::UINT8;
                 m_bitspersample = 8;
                 TIFFSetField (m_tif, TIFFTAG_BITSPERSAMPLE, m_bitspersample);
                 TIFFSetField (m_tif, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_UINT);
             }
-            // We're going to need to convert presumed RGB to CMYK unless
-            // the data we're receiving already looks like it's CMYK.
-            m_convert_rgb_to_cmyk =
-               ! (m_spec.nchannels == 4 &&
-                  m_spec.get_string_attribute("oiio:ColorSpace") == "CMYK");
+            if (source_is_rgb(m_spec)) {
+                // Case: RGB -> CMYK, do the conversions per pixel
+                m_convert_rgb_to_cmyk = true;
+                m_outputchans = 4;  // output 4, not 4 chans
+                TIFFSetField (m_tif, TIFFTAG_SAMPLESPERPIXEL, m_outputchans);
+                TIFFSetField (m_tif, TIFFTAG_INKSET, INKSET_CMYK);
+            } else if (source_is_cmyk(m_spec)) {
+                // Case: CMYK -> CMYK (do not transform)
+                m_convert_rgb_to_cmyk = false;
+                TIFFSetField (m_tif, TIFFTAG_INKSET, INKSET_CMYK);
+            } else {
+                // Case: arbitrary inks
+                m_convert_rgb_to_cmyk = false;
+                TIFFSetField (m_tif, TIFFTAG_INKSET, INKSET_MULTIINK);
+                std::string inknames;
+                for (int i = 0; i < m_spec.nchannels; ++i) {
+                    if (i)
+                        inknames.insert (inknames.size(), 1, '\0');
+                    if (i < (int)m_spec.channelnames.size())
+                        inknames.insert (inknames.size(), m_spec.channelnames[i]);
+                    else
+                        inknames.insert (inknames.size(), Strutil::format("ink%d", i));
+                }
+                TIFFSetField (m_tif, TIFFTAG_INKNAMES, int(inknames.size()+1), &inknames[0]);
+                TIFFSetField (m_tif, TIFFTAG_NUMBEROFINKS, m_spec.nchannels);
+            }
         }
     }
 
     TIFFSetField (m_tif, TIFFTAG_PHOTOMETRIC, m_photometric);
 
     // ExtraSamples tag
-    if (m_spec.nchannels > 3 && m_photometric != PHOTOMETRIC_SEPARATED) {
+    if ((m_spec.alpha_channel >= 0 || m_spec.nchannels > 3)
+         && m_photometric != PHOTOMETRIC_SEPARATED) {
         bool unass = m_spec.get_int_attribute("oiio:UnassociatedAlpha", 0);
-        short e = m_spec.nchannels-3;
+        int defaultchans = m_spec.nchannels >= 3 ? 3 : 1;
+        short e = m_spec.nchannels - defaultchans;
         std::vector<unsigned short> extra (e);
         for (int c = 0;  c < e;  ++c) {
-            if (m_spec.alpha_channel == (c+3))
+            if (m_spec.alpha_channel == (c+defaultchans))
                 extra[c] = unass ? EXTRASAMPLE_UNASSALPHA : EXTRASAMPLE_ASSOCALPHA;
             else
                 extra[c] = EXTRASAMPLE_UNSPECIFIED;
@@ -1071,6 +1100,52 @@ TIFFOutput::write_tile (int x, int y, int z,
     }
     
     return true;
+}
+
+
+
+bool
+TIFFOutput::source_is_cmyk (const ImageSpec &spec)
+{
+    if (spec.nchannels != 4) {
+        return false;   // Can't be CMYK if it's not 4 channels
+    }
+    if (Strutil::iequals(spec.channelnames[0], "C") &&
+        Strutil::iequals(spec.channelnames[1], "M") &&
+        Strutil::iequals(spec.channelnames[2], "Y") &&
+        Strutil::iequals(spec.channelnames[3], "K"))
+        return true;
+    if (Strutil::iequals(spec.channelnames[0], "Cyan") &&
+        Strutil::iequals(spec.channelnames[1], "Magenta") &&
+        Strutil::iequals(spec.channelnames[2], "Yellow") &&
+        Strutil::iequals(spec.channelnames[3], "Black"))
+        return true;
+    string_view oiiocs = spec.get_string_attribute("oiio:ColorSpace");
+    if (Strutil::iequals (oiiocs, "CMYK"))
+        return true;
+    return false;
+}
+
+
+
+bool
+TIFFOutput::source_is_rgb (const ImageSpec &spec)
+{
+    string_view oiiocs = spec.get_string_attribute("oiio:ColorSpace");
+    if (Strutil::iequals (oiiocs, "CMYK") ||
+        Strutil::iequals (oiiocs, "color separated"))
+        return false;   // It's a color space mode that means something else
+    if (spec.nchannels != 3)
+        return false;   // Can't be RGB if it's not 3 channels
+    if (Strutil::iequals(spec.channelnames[0], "R") &&
+        Strutil::iequals(spec.channelnames[1], "G") &&
+        Strutil::iequals(spec.channelnames[2], "B"))
+        return true;
+    if (Strutil::iequals(spec.channelnames[0], "Red") &&
+        Strutil::iequals(spec.channelnames[1], "Green") &&
+        Strutil::iequals(spec.channelnames[2], "Blue"))
+        return true;
+    return false;
 }
 
 OIIO_PLUGIN_NAMESPACE_END

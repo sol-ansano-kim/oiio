@@ -8,7 +8,7 @@ import glob
 
 major = 1
 minor = 7
-patch = 14
+patch = 16
 
 env = excons.MakeBaseEnv()
 out_basedir = excons.OutputBaseDirectory()
@@ -475,7 +475,7 @@ for k, v in oiio_opts.iteritems():
 def OiioName(static=False):
     libname = "OpenImageIO"
     if sys.platform == "win32" and static:
-        libname += "-static"
+        libname = "lib" + libname
     return libname
 
 def OiioPath(static=False):
@@ -489,7 +489,7 @@ def OiioPath(static=False):
 def RequireOiio(env, static=False):
     env.Append(CPPPATH=[excons.OutputBaseDirectory() + "/include"])
     env.Append(LIBPATH=[excons.OutputBaseDirectory() + "/lib"])
-    excons.Link(env, OiioName(static=static), static=static, force=True, silent=True)
+    excons.Link(env, OiioPath(static=static), static=static, force=True, silent=True)
 
 
 prjs.append({"name": "oiio",
