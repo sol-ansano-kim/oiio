@@ -1,3 +1,9 @@
+Release 1.7.17 (1 Sep 2017) -- compared to 1.7.16
+-------------------------------------------------
+* Repair build breaks against Boost 1.65. #1753
+* Fix a subtle static initialization order problem. #1757
+* Build: Improved finding LibRaw. #1749
+
 Release 1.7.16 (1 Aug 2017) -- compared to 1.7.15
 -------------------------------------------------
 * OpenEXR: fix problem with 2-channel images putting the channels in the

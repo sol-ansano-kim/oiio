@@ -8,7 +8,7 @@ import glob
 
 major = 1
 minor = 7
-patch = 16
+patch = 17
 
 env = excons.MakeBaseEnv()
 out_basedir = excons.OutputBaseDirectory()
@@ -380,11 +380,11 @@ if not rv["require"]:
     libraw_path = LibrawPath()
     libraw_outputs = [libraw_path]
 
-    oiio_opts["LibRaw_INCLUDE_DIR"] = out_incdir + "/libraw"
+    oiio_opts["LibRaw_INCLUDE_DIR"] = out_incdir
     oiio_opts["LibRaw_r_LIBRARIES"] = libraw_path
 else:
     libraw_outputs = []
-    oiio_opts["LibRaw_INCLUDE_DIR"] = rv["incdir"] + "/libraw"
+    oiio_opts["LibRaw_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["LibRaw_r_LIBRARIES"] = rv["libpath"]
 
 oiio_dependecies += libraw_outputs
