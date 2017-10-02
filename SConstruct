@@ -42,6 +42,7 @@ oiio_opts = {}
 overrides = {}
 oiio_dependecies = []
 extra_libs = []
+export_libs = []
 extra_includes = []
 
 # build options
@@ -194,8 +195,10 @@ if not rv["require"]:
     overrides["with-zlib"] = os.path.dirname(os.path.dirname(z_path))
     overrides["zlib-static"] = z_static
     overrides["zlib-name"] = ZlibName(static=z_static)
+    export_libs += zlib_outputs
 else:
     zlib_outputs = []
+    export_libs.append(rv.get("libpath"))
 
 # bzip2 (no deps [SCons])
 def Bzip2Libname(static):
@@ -218,8 +221,10 @@ if not rv["require"]:
     overrides["with-bz2"] = os.path.dirname(os.path.dirname(bz2_path))
     overrides["bz2-static"] = bz2_static
     overrides["bz2-name"] = BZ2Name()
+    export_libs += bzip2_outputs
 else:
     bzip2_outputs = []
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += bzip2_outputs
 
@@ -235,13 +240,15 @@ if not rv["require"]:
     overrides["jbig-static"] = 1
     overrides["jbig-name"] = JbigName()
 
-    extra_libs.append(JbigPath())
+    extra_libs.append(jbig_path)
+    export_libs.append(jbig_path)
 else:
     jbig_outputs = []
     if not rv["libpath"]:
         excons.WarnOnce("Could not find JBIG library", tool="OIIO")
         sys.exit(1)
-    extra_libs.append(rv["libpath"])
+    extra_libs.append(rv.get("libpath"))
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += jbig_outputs
 
@@ -256,7 +263,7 @@ if not rv["require"]:
     excons.Call("libjpeg-turbo", overrides=overrides, imp=["LibjpegName", "LibjpegPath"])
     jpeg_static = excons.GetArgument("libjpeg-static", 1, int)
     jpeg_path = LibjpegPath(static=jpeg_static)
-    jpeg_outputs = [LibjpegPath(static=jpeg_static)]
+    jpeg_outputs = [jpeg_path]
 
     oiio_opts["JPEG_INCLUDE_DIR"] = out_incdir
     oiio_opts["JPEG_LIBRARY"] = jpeg_path
@@ -264,8 +271,11 @@ if not rv["require"]:
     overrides["with-libjpeg"] = os.path.dirname(os.path.dirname(jpeg_path))
     overrides["libjpeg-static"] = jpeg_static
     overrides["libjpeg-name"] = LibjpegName(jpeg_static)
+    export_libs += jpeg_outputs
 else:
     jpeg_outputs = []
+    export_libs.append(rv.get("libpath"))
+
 
 oiio_dependecies += jpeg_outputs
 
@@ -274,17 +284,20 @@ rv = excons.cmake.ExternalLibRequire(oiio_opts, "openjpeg")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build openjpeg from sources ...")
     excons.Call("openjpeg", imp=["OpenjpegPath"])
+    openjpeg_path = OpenjpegPath()
     openjpeg_outputs = [OpenjpegPath()]
 
     oiio_opts["OPENJPEG_HOME"] = excons.OutputBaseDirectory()
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = out_incdir + "/openjpeg-2.1"
-    oiio_opts["OPENJPEG_LIBRARY"] = OpenjpegPath()
-    oiio_opts["OPENJPEG_LIBRARY_RELEASE"] = OpenjpegPath()
-    oiio_opts["OPENJPEG_LIBRARY_DEBUG"] = OpenjpegPath()
+    oiio_opts["OPENJPEG_LIBRARY"] = openjpeg_path
+    oiio_opts["OPENJPEG_LIBRARY_RELEASE"] = openjpeg_path
+    oiio_opts["OPENJPEG_LIBRARY_DEBUG"] = openjpeg_path
+    export_libs += openjpeg_outputs
 else:
     oiio_opts["OPENJPEG_HOME"] = os.path.dirname(rv["incdir"])
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = rv["incdir"] + "/openjpeg-2.1"
     openjpeg_outputs = []
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += openjpeg_outputs
 
@@ -311,8 +324,10 @@ if not rv["require"]:
     overrides["with-libpng"] = os.path.dirname(os.path.dirname(png_path))
     overrides["libpng-static"] = png_static
     overrides["libpng-name"] = LibpngName(png_static)
+    export_libs += libpng_outputs
 else:
     libpng_outputs = []
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += libpng_outputs
 
@@ -335,8 +350,10 @@ if not rv["require"]:
     overrides["with-libtiff"] = os.path.dirname(os.path.dirname(tiff_path))
     overrides["libtiff-static"] = excons.GetArgument("libtiff-static", 1, int)
     overrides["libtiff-name"] = LibtiffName()
+    export_libs += tiff_outputs
 else:
     tiff_outputs = []
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += tiff_outputs
 
@@ -360,8 +377,10 @@ if not rv["require"]:
     overrides["lcms2-static"] = lcms2_static
     overrides["lcms2-name"] = LCMS2Name()
     overrides["libraw-with-lcms2"] = 1
+    export_libs += lcms2_outputs
 else:
     lcms2_outputs = []
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += lcms2_outputs
 
@@ -382,10 +401,12 @@ if not rv["require"]:
 
     oiio_opts["LibRaw_INCLUDE_DIR"] = out_incdir
     oiio_opts["LibRaw_r_LIBRARIES"] = libraw_path
+    export_libs += libraw_outputs
 else:
     libraw_outputs = []
     oiio_opts["LibRaw_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["LibRaw_r_LIBRARIES"] = rv["libpath"]
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += libraw_outputs
 
@@ -400,8 +421,10 @@ if not rv["require"]:
     
     oiio_opts["FREETYPE_INCLUDE_DIR"] = out_incdir
     oiio_opts["FREETYPE_LIBRARY"] = freetype_path
+    export_libs += freetype_outputs
 else:
     freetype_outputs = []
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += freetype_outputs
 
@@ -425,8 +448,10 @@ if not rv["require"]:
     oiio_opts["LCMS2_LIBRARY"] = LCMS2Path()
     oiio_opts["YAML_LIBRARY"] = YamlCppPath()
     oiio_opts["TINYXML_LIBRARY"] = TinyXmlPath()
+    export_libs += ocio_outputs
 else:
     ocio_outputs = []
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += ocio_outputs
 
@@ -450,6 +475,7 @@ if not rv["require"]:
     oiio_opts["OPENEXR_IMATH_LIBRARY"] = openexr_imath
     oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = openexr_ilmt
     oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = openexr_imf
+    export_libs += openexr_outputs
 else:
     openexr_outputs = []
 
@@ -460,6 +486,7 @@ else:
     oiio_opts["OPENEXR_IMATH_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Imath")
     oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmThread")
     oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmImf")
+    export_libs.append(rv.get("libpath"))
 
 oiio_dependecies += openexr_outputs
 
@@ -492,6 +519,10 @@ def RequireOiio(env, static=False):
     excons.Link(env, OiioPath(static=static), static=static, force=True, silent=True)
 
 
+def OiioExtraLibPaths():
+    return export_libs
+
+
 prjs.append({"name": "oiio",
              "type": "cmake",
              "cmake-opts": oiio_opts,
@@ -513,7 +544,7 @@ excons.DeclareTargets(env, prjs)
 
 Default("oiio")
 
-Export("OiioName OiioPath RequireOiio")
+Export("OiioName OiioPath RequireOiio OiioExtraLibPaths")
 
 # Ecosystem
 
