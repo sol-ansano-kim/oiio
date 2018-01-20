@@ -29,22 +29,21 @@
 */
 
 
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagebufalgo.h"
-#include "OpenImageIO/argparse.h"
-#include "OpenImageIO/ustring.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/timer.h"
-#include "OpenImageIO/unittest.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
+#include <OpenImageIO/argparse.h>
+#include <OpenImageIO/ustring.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/timer.h>
+#include <OpenImageIO/benchmark.h>
+#include <OpenImageIO/unittest.h>
 
 #include <iostream>
 #include <vector>
+#include <functional>
 
-#include <boost/bind.hpp>
-#include <boost/foreach.hpp>
-
-OIIO_NAMESPACE_USING;
+using namespace OIIO;
 
 static bool verbose = false;
 static int iterations = 1;
@@ -69,7 +68,7 @@ static float cache_size = 0;
 static int
 parse_files (int argc, const char *argv[])
 {
-    input_filename.push_back (ustring(argv[0]));
+    input_filename.emplace_back(argv[0]);
     return 0;
 }
 
@@ -116,7 +115,7 @@ getargs (int argc, char *argv[])
 static void
 time_read_image ()
 {
-    BOOST_FOREACH (ustring filename, input_filename) {
+    for (ustring filename : input_filename) {
         ImageInput *in = ImageInput::open (filename.c_str());
         ASSERT (in);
         in->read_image (conversion, &buffer[0]);
@@ -130,7 +129,7 @@ time_read_image ()
 static void
 time_read_scanline_at_a_time ()
 {
-    BOOST_FOREACH (ustring filename, input_filename) {
+    for (ustring filename : input_filename) {
         ImageInput *in = ImageInput::open (filename.c_str());
         ASSERT (in);
         const ImageSpec &spec (in->spec());
@@ -152,7 +151,7 @@ time_read_scanline_at_a_time ()
 static void
 time_read_64_scanlines_at_a_time ()
 {
-    BOOST_FOREACH (ustring filename, input_filename) {
+    for (ustring filename : input_filename) {
         ImageInput *in = ImageInput::open (filename.c_str());
         ASSERT (in);
         const ImageSpec &spec (in->spec());
@@ -175,7 +174,7 @@ static void
 time_read_imagebuf ()
 {
     imagecache->invalidate_all (true);
-    BOOST_FOREACH (ustring filename, input_filename) {
+    for (ustring filename : input_filename) {
         ImageBuf ib (filename.string(), imagecache);
         ib.read (0, 0, true, conversion);
     }
@@ -187,7 +186,7 @@ static void
 time_ic_get_pixels ()
 {
     imagecache->invalidate_all (true);
-    BOOST_FOREACH (ustring filename, input_filename) {
+    for (ustring filename : input_filename) {
         const ImageSpec spec = (*imagecache->imagespec (filename));
         imagecache->get_pixels (filename, 0, 0, spec.x, spec.x+spec.width,
                                 spec.y, spec.y+spec.height,
@@ -359,7 +358,7 @@ test_write (const std::string &explanation,
 static float
 time_loop_pixels_1D (ImageBuf &ib, int iters)
 {
-    ASSERT (ib.localpixels() && ib.pixeltype() == TypeDesc::TypeFloat);
+    ASSERT (ib.localpixels() && ib.pixeltype() == TypeFloat);
     const ImageSpec &spec (ib.spec());
     imagesize_t npixels = spec.image_pixels();
     int nchannels = spec.nchannels;
@@ -381,7 +380,7 @@ time_loop_pixels_1D (ImageBuf &ib, int iters)
 static float
 time_loop_pixels_3D (ImageBuf &ib, int iters)
 {
-    ASSERT (ib.localpixels() && ib.pixeltype() == TypeDesc::TypeFloat);
+    ASSERT (ib.localpixels() && ib.pixeltype() == TypeFloat);
     const ImageSpec &spec (ib.spec());
     imagesize_t npixels = spec.image_pixels();
     int nchannels = spec.nchannels;
@@ -407,7 +406,7 @@ time_loop_pixels_3D (ImageBuf &ib, int iters)
 static float
 time_loop_pixels_3D_getchannel (ImageBuf &ib, int iters)
 {
-    ASSERT (ib.pixeltype() == TypeDesc::TypeFloat);
+    ASSERT (ib.pixeltype() == TypeFloat);
     const ImageSpec &spec (ib.spec());
     imagesize_t npixels = spec.image_pixels();
     double sum = 0.0f;
@@ -429,7 +428,7 @@ time_loop_pixels_3D_getchannel (ImageBuf &ib, int iters)
 static float
 time_iterate_pixels (ImageBuf &ib, int iters)
 {
-    ASSERT (ib.pixeltype() == TypeDesc::TypeFloat);
+    ASSERT (ib.pixeltype() == TypeFloat);
     const ImageSpec &spec (ib.spec());
     imagesize_t npixels = spec.image_pixels();
     double sum = 0.0f;
@@ -447,7 +446,7 @@ time_iterate_pixels (ImageBuf &ib, int iters)
 static float
 time_iterate_pixels_slave_pos (ImageBuf &ib, int iters)
 {
-    ASSERT (ib.pixeltype() == TypeDesc::TypeFloat);
+    ASSERT (ib.pixeltype() == TypeFloat);
     const ImageSpec &spec (ib.spec());
     imagesize_t npixels = spec.image_pixels();
     double sum = 0.0f;
@@ -467,7 +466,7 @@ time_iterate_pixels_slave_pos (ImageBuf &ib, int iters)
 static float
 time_iterate_pixels_slave_incr (ImageBuf &ib, int iters)
 {
-    ASSERT (ib.pixeltype() == TypeDesc::TypeFloat);
+    ASSERT (ib.pixeltype() == TypeFloat);
     const ImageSpec &spec (ib.spec());
     imagesize_t npixels = spec.image_pixels();
     double sum = 0.0f;
@@ -494,8 +493,8 @@ test_pixel_iteration (const std::string &explanation,
     imagecache->attribute ("autotile", autotile);
     imagecache->attribute ("autoscanline", 1);
     ImageBuf ib (input_filename[0].string(), imagecache);
-    ib.read (0, 0, preload, TypeDesc::TypeFloat);
-    double t = time_trial (boost::bind(func,boost::ref(ib),iters), ntrials);
+    ib.read (0, 0, preload, TypeFloat);
+    double t = time_trial (std::bind(func,std::ref(ib),iters), ntrials);
     double rate = double(ib.spec().image_pixels()) / (t/iters);
     std::cout << "  " << explanation << ": "
               << Strutil::timeintervalformat(t/iters,3) 
@@ -549,10 +548,10 @@ main (int argc, char **argv)
     bool all_scanline = true;
     total_image_pixels = 0;
     imagesize_t maxpelchans = 0;
-    for (size_t i = 0;  i < input_filename.size();  ++i) {
+    for (auto&& fn : input_filename) {
         ImageSpec spec;
-        if (! imagecache->get_imagespec (input_filename[i], spec, 0, 0, true)) {
-            std::cout << "File \"" << input_filename[i] << "\" could not be opened.\n";
+        if (! imagecache->get_imagespec (fn, spec, 0, 0, true)) {
+            std::cout << "File \"" << fn << "\" could not be opened.\n";
             return -1;
         }
         total_image_pixels += spec.image_pixels();

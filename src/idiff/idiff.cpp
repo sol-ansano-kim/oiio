@@ -37,17 +37,17 @@
 #include <iomanip>
 #include <iterator>
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/argparse.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/imagecache.h"
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagebufalgo.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/argparse.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/imagecache.h>
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
 
 
-OIIO_NAMESPACE_USING
+using namespace OIIO;
 
 
 enum idiffErrors {
@@ -84,7 +84,7 @@ static int
 parse_files (int argc, const char *argv[])
 {
     for (int i = 0;  i < argc;  i++)
-        filenames.push_back (argv[i]);
+        filenames.emplace_back(argv[i]);
     return 0;
 }
 
@@ -146,7 +146,7 @@ read_input (const std::string &filename, ImageBuf &img,
         return true;
 
     img.reset (filename, cache);
-    if (img.read (subimage, miplevel, false, TypeDesc::TypeFloat))
+    if (img.read (subimage, miplevel, false, TypeFloat))
         return true;
 
     std::cerr << "idiff ERROR: Could not read " << filename << ":\n\t"
@@ -259,7 +259,7 @@ main (int argc, char *argv[])
             int npels = img0.spec().width * img0.spec().height * img0.spec().depth;
             if (npels == 0)
                 npels = 1;    // Avoid divide by zero for 0x0 images
-            ASSERT (img0.spec().format == TypeDesc::FLOAT);
+            ASSERT (img0.spec().format == TypeFloat);
 
             // Compare the two images.
             //
@@ -302,6 +302,14 @@ main (int argc, char *argv[])
                         std::cout << ", " << img1.spec().channelnames[cr.maxc] << ')';
                     else
                         std::cout << ", channel " << cr.maxc << ')';
+                    if (! img0.deep()) {
+                        std::cout << "  values are ";
+                        for (int c = 0; c < img0.spec().nchannels; ++c)
+                            std::cout << (c ? ", " : "") << img0.getchannel(cr.maxx, cr.maxy, 0, c);
+                        std::cout << " vs ";
+                        for (int c = 0; c < img1.spec().nchannels; ++c)
+                            std::cout << (c ? ", " : "") << img1.getchannel(cr.maxx, cr.maxy, 0, c);
+                    }
                 }
                 std::cout << "\n";
 #if OIIO_MSVS_BEFORE_2015

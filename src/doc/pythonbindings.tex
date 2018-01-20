@@ -86,24 +86,28 @@ Construct a {\cf TypeDesc} object.
 \end{code}
 \apiend
 
-\apiitem{TypeDesc.TypeFloat() \\
-TypeDesc.TypeInt() \\
-TypeDesc.TypeString() \\
-TypeDesc.TypeHalf() \\
-TypeDesc.TypeColor() \\
-TypeDesc.TypePoint() \\
-TypeDesc.TypeVector() \\
-TypeDesc.TypeNormal() \\
-TypeDesc.TypeMatrix() \\
-TypeDesc.TypeMatrix33() \\
-TypeDesc.TypeTimeCode() \\
-TypeDesc.TypeKeyCode() \\
-TypeDesc.TypeFloat4()}
-Pre-constructed \TypeDesc objects for some common types.
+\apiitem{TypeFloat \\
+TypeInt \\
+TypeUInt \\
+TypeString \\
+TypeHalf \\
+TypeColor \\
+TypePoint \\
+TypeVector \\
+TypeNormal \\
+TypeMatrix \\
+TypeMatrix33 \\
+TypeTimeCode \\
+TypeKeyCode \\
+TypeFloat4 \\
+TypeRational \\
+}
+Pre-constructed \TypeDesc objects for some common types, available in the
+outer OpenImageIO scope.
 
 \noindent Example:
 \begin{code}
-    t = TypeDesc.TypeFloat()
+    t = TypeFloat
 \end{code}
 \apiend
 
@@ -275,7 +279,9 @@ Section~\ref{sec:ImageSpec}, is replicated for Python.
 {\ce ImageSpec} (basetype) \\
 {\ce ImageSpec} (typedesc) \\
 {\ce ImageSpec} (xres, yres, nchannels, basetype) \\
-{\ce ImageSpec} (xres, yres, nchannels, typespec)}
+{\ce ImageSpec} (xres, yres, nchannels, typespec) \\
+{\ce ImageSpec} (roi, basetype) \\
+{\ce ImageSpec} (roi, typespec)}
 Constructors of an \ImageSpec. These correspond directly to the constructors
 in the C++ bindings.
 
@@ -292,6 +298,9 @@ in the C++ bindings.
 
     # construct with known resolution, channels, pixel data type
     s = ImageSpec(640, 480, 4, oiio.HALF)
+
+    # construct from an ROI
+    s = ImageSpec (ROI(0,640,0,480,0,1,0,3), oiio.FLOAT)
 \end{code}
 \apiend
 
@@ -374,6 +383,12 @@ Sets {\cf channel_names} to the default names given the value of
 the {\cf nchannels} field.
 \apiend
 
+\apiitem{int ImageSpec.{\ce channelindex} (name)}
+\NEW % 1.8
+Return (as an int) the index of the channel with the given name, or -1
+if it does not exist.
+\apiend
+
 \apiitem{ImageSpec.{\ce channel_bytes} () \\
 ImageSpec.{\ce channel_bytes} (channel, native=False)}
 Returns the size of a single channel value, in bytes (as an
@@ -408,8 +423,8 @@ Section~\ref{sec:ImageSpecMemberFuncs} for details.)
 
 \apiitem{ImageSpec.{\ce erase_attribute} (name, searchtype=TypeDesc(TypeDesc.UNKNOWN),\\
 \bigspc\bigspc\spc casesensitive=False)}
-Remove the specified attribute from the list of extra_attribs. If not found,
-do nothing.
+Remove any specified attributes matching the regular expression {\cf name}
+from the list of extra_attribs.
 \apiend
 
 \apiitem{ImageSpec.{\ce attribute} (name, int) \\
@@ -599,6 +614,14 @@ samples for each pixel (using {\cf set_nsamples}) and then call {\cf alloc()}
 to actually allocate the sample memory.
 \apiend
 
+\apiitem{bool {\ce DeepData}.initialized ()}
+Returns {\cf True} if the \DeepData is initialized at all.
+\apiend
+
+\apiitem{bool {\ce DeepData}.allocated ()}
+Returns {\cf True} if the \DeepData has already had pixel memory allocated.
+\apiend
+
 \apiitem{DeepData.{\ce pixels}}
 This {\cf int} field constains the total number of pixels in this
 collection of deep data.
@@ -608,9 +631,20 @@ collection of deep data.
 This {\cf int} field constains the number of channels.
 \apiend
 
+\apiitem{int DeepData.{\ce A_channel} \\
+int DeepData.{\ce AR_channel} \\
+int DeepData.{\ce AG_channel} \\
+int DeepData.{\ce AB_channel} \\
+int DeepData.{\ce Z_channel} \\
+int DeepData.{\ce Zback_channel}}
+\NEW % 1.8
+The channel index of certain named channels, or -1 if they don't exist. For
+{\cf AR_channel}, {\cf AG_channel}, {\cf AB_channel}, if they don't exist,
+they will contain the value of {\cf A_channel}, and {\cf Zback_channel} will
+contain the value of {\cf Z_channel} if there is no actual {\cf Zback}.
+\apiend
 
 \apiitem{string DeepData.{\ce channelname} (c)}
-\NEW % 1.7
 Retrieve the name of channel {\cf c}.
 \apiend
 
@@ -635,7 +669,6 @@ index).
 
 \apiitem{DeepData.{\ce insert_samples} (pixel, samplepos, n) \\
 int DeepData.{\ce erase_samples} (pixel, samplepos, n)}
-\NEW % 1.7
 Insert or erase \emph{n} samples starting at the given position of an
 indexed pixel.
 \apiend
@@ -653,40 +686,40 @@ channel, and sample index (for float or uint channels, respectively).
 \apiend
 
 \apiitem{DeepData.{\ce copy_deep_sample} (pixel, sample, src, srcpixel, srcsample)}
-\NEW % 1.7
 Copy a deep sample from \DeepData {\cf src} into this \DeepData.
 \apiend
 
 \apiitem{DeepData.{\ce copy_deep_pixel} (pixel, src, srcpixel)}
-\NEW % 1.7
 Copy a deep pixel from \DeepData {\cf src} into this \DeepData.
 \apiend
 
-\apiitem{DeepData.{\ce split} (pixel, depth)}
-\NEW % 1.7
-Split any samples of the pixel that cross {\cf depth}.
+\apiitem{bool DeepData.{\ce split} (pixel, depth)}
+Split any samples of the pixel that cross {\cf depth}. Return {\cf True} if
+any splits occurred, {\cf False} if the pixel was unmodified.
 \apiend
 
 \apiitem{DeepData.{\ce sort} (pixel)}
-\NEW % 1.7
 Sort the samples of the pixel by their Z depth.
 \apiend
 
 \apiitem{DeepData.{\ce merge_overlaps} (pixel)}
-\NEW % 1.7
 Merge any adjacent samples in the pixel that exactly overlap in $z$
 range. This is only useful if the pixel has previously been split at
 all sample starts and ends, and sorted by depth.
 \apiend
 
 \apiitem{DeepData.{\ce merge_deep_pixels} (pixel, src, srcpixel)}
-\NEW % 1.7
 Merge the samples of {\cf src}'s pixel into this \DeepData's pixel.
 \apiend
 
 \apiitem{DeepData.{\ce occlusion_cull} (pixel)}
-\NEW % 1.7
 Eliminate any samples beyond an opaque sample.
+\apiend
+
+\apiitem{float DeepData.{\ce opaque_z} (pixel)}
+\NEW % 1.8
+For the given pixel index. return the $z$ value at which the pixel reaches
+full opacity.
 \apiend
 
 
@@ -1607,7 +1640,6 @@ retrieve the error message (and clear it afterwards).
 \apiend
 
 \apiitem{int ImageBuf.{\ce pixelindex} (x, y, z, check_range=False)}
-\NEW %1.7
 Return the index of pixel (x,y,z).
 \apiend
 
@@ -1626,7 +1658,6 @@ Set the number of deep samples for pixel (x,y,z).
 
 \apiitem{ImageBuf.{\ce deep_insert_samples} (x, y, z, samplepos, nsamples) \\
 int ImageBuf.{\ce deep_erase_samples} (x, y, z, samplepos, nsamples)}
-\NEW % 1.7
 Insert or erase \emph{nsamples} samples starting at the given position of
 pixel {\cf (x,y,z)}.
 \apiend
@@ -1778,7 +1809,6 @@ Choosing different seed values will result in a different pattern.
 
 \apiitem{bool ImageBufAlgo.{\ce render_point} (dst, x, y, color=(1,1,1,1))}
 \index{ImageBufAlgo!render_point} \indexapi{render_point}
-\NEW % 1.7
 
 Render a point at pixel $(x,y)$ of {\cf dst}.  The {\cf color} (if supplied)
 is a tuple giving the per-channel colors.
@@ -1795,7 +1825,6 @@ is a tuple giving the per-channel colors.
 \apiitem{bool ImageBufAlgo.{\ce render_line} (dst, x1, y1, x2, y2, \\
 \bigspc\bigspc color=(1,1,1,1), skip_first_point=False)}
 \index{ImageBufAlgo!render_line} \indexapi{render_line}
-\NEW % 1.7
 
 Render a line from pixel $(x_1,y_1)$ to $(x_2,y_2)$ into {\cf dst}.  The
 {\cf color} (if supplied) is a tuple giving the per-channel colors.
@@ -1812,7 +1841,6 @@ Render a line from pixel $(x_1,y_1)$ to $(x_2,y_2)$ into {\cf dst}.  The
 \apiitem{bool ImageBufAlgo.{\ce render_box} (dst, x1, y1, x2, y2, \\
 \bigspc\bigspc color=(1,1,1,1), filled=False)}
 \index{ImageBufAlgo!render_box} \indexapi{render_box}
-\NEW % 1.7
 
 Render a filled or unfilled box with corners at pixels $(x_1,y_1)$ and
 $(x_2,y_2)$ into {\cf dst}.  The {\cf color} (if supplied) is a tuple giving
@@ -1829,11 +1857,15 @@ the per-channel colors.
 
 
 \apiitem{bool ImageBufAlgo.{\ce render_text} (dst, x, y, text, fontsize=16, \\
-  \bigspc\bigspc  fontname="", textcolor=(1,1,1,1))}
+  \bigspc\bigspc  fontname="", textcolor=(1,1,1,1),\\
+  \bigspc\bigspc  alignx="left", aligny="baseline", shadow=0,\\
+  \bigspc\bigspc  roi=ROI.All, nthreads=0}
 \index{ImageBufAlgo!render_text} \indexapi{render_text}
 
 Render antialiased text into {\cf dst}.  The {\cf textcolor} (if supplied)
-is a tuple giving the per-channel colors.
+is a tuple giving the per-channel colors. Choices for {\cf alignx} are
+\qkw{left}, \qkw{right}, and \qkw{center}, and choices for {\cf aligny} are
+\qkw{baseline}, \qkw{top}, \qkw{bottom}, and \qkw{center}.
 
 \smallskip
 \noindent Examples:
@@ -1841,9 +1873,35 @@ is a tuple giving the per-channel colors.
     buf = ImageBuf(ImageSpec (640, 480, 4, oiio.FLOAT))
     ImageBufAlgo.render_text (buf, 50, 100, "Hello, world")
     ImageBufAlgo.render_text (buf, 100, 200, "Go Big Red!",
-                               60, "Arial Bold", (1,0,0,1))
+                              60, "Arial Bold", (1,0,0,1))
 \end{code}
 % \spc \includegraphics[width=2.5in]{figures/text.jpg}
+\apiend
+
+
+\apiitem{ROI ImageBufAlgo.{\ce text_size} (text, fontsize=16, fontname="")}
+\index{ImageBufAlgo!text_size} \indexapi{text_size}
+
+\NEW % 1.8
+Compute the size that will be needed for the text as an ROI and return it.
+The size will not be {\cf defined} if an error occurred (such as not being a
+valid font name).
+
+\smallskip
+\noindent Examples:
+\begin{code}
+    A = ImageBuf(ImageSpec (640, 480, 4, oiio.FLOAT))
+    Aroi = A.roi
+    size = ImageBufAlgo.text_size ("Centered", 40, "Courier New")
+    if size.defined :
+        x = Aroi.xbegin + Aroi.width/2  - (size.xbegin + size.width/2)
+        y = Aroi.ybegin + Aroi.height/2 - (size.ybegin + size.height/2)
+        ImageBufAlgo.render_text (A, x, y, "Centered", 40, "Courier New")
+
+    # Note: this was for illustration. An easier way to do this is:
+    #   render_text (A, x, y, "Centered", 40, "Courier New", alignx="center")
+\end{code}
+% \spc \includegraphics[width=2.5in]{figures/textcentered.jpg}
 \apiend
 
 
@@ -2319,8 +2377,37 @@ channel (if not supplied, all channels will have weight 1.0).
 \begin{code}
     # Compute luminance via a weighted sum of R,G,B
     # (assuming Rec709 primaries and a linear scale)
+    luma = ImageBuf()
     luma_weights = (.2126, .7152, .0722)
     ImageBufAlgo.channel_sum (luma, ImageBuf("a.exr"), luma_weights)
+\end{code}
+\apiend
+
+
+\apiitem{bool ImageBufAlgo.{\ce color_map} (dst, src, srcchannel, \\
+        nknots, channels, knots, roi=ROI.All, nthreads=0) \\
+bool ImageBufAlgo.{\ce color_map} (dst, src, srcchannel, \\
+        mapname, roi=ROI.All, nthreads=0)}
+\index{ImageBufAlgo!color_map} \indexapi{color_map}
+\NEW % 1.8
+Set pixels of {\cf dst} by applying the color map to the values of {\cf
+src}, using either the channel specified by {\cf srcchannel}, or the
+luminance of {\cf src}'s RGB if {\cf srcchannel} is -1.
+
+In the first variant, the values linearly-interpolated color map are
+given by the tuple {\cf knots[nknots*channels]}.
+
+In the second variant, just the name of a color map is specified. Recognized
+map names include: \qkw{blue-red}, \qkw{spectrum}, and \qkw{heat}. In all
+cases, the implied {\cf channels} is 3.
+
+\smallskip
+\noindent Examples:
+\begin{code}
+    heatmap = ImageBuf()
+    ImageBufAlgo.color_map (heatmap, ImageBuf("a.jpg"), -1, "heat")
+    ImageBufAlgo.color_map (heatmap, ImageBuf("a.jpg"), -1, 3, 3,
+                            (0.25, 0.25, 0.25,  0, 0.5, 0,  1, 0, 0))
 \end{code}
 \apiend
 
@@ -2715,7 +2802,6 @@ a kernel (also an \ImageBuf).
 
 \apiitem{bool ImageBufAlgo.{\ce laplacian} (dst, src, roi=ROI.All, nthreads=0)}
 \index{ImageBufAlgo!laplacian} \indexapi{laplacian}
-\NEW % 1.7
 Replace the given ROI of {\cf dst} with the Laplacian of the corresponding
 part of {\cf src}.
 
@@ -2849,7 +2935,6 @@ bool ImageBufAlgo.{\ce erode} (dst, src, width=3, height=-1, \\
   \bigspc\spc  roi=ROI.All, nthreads=0) }
 \index{ImageBufAlgo!dilate} \indexapi{dilate}
 \index{ImageBufAlgo!erode} \indexapi{erode}
-\NEW % 1.7
 
 Replace the given ROI of {\cf dst} with a dilated or eroded version of the
 corresponding region of {\cf src}.
@@ -3061,7 +3146,6 @@ src} and store the single  resulting value per pixel in ``flat'' \ImageBuf
 \apiitem{bool ImageBufAlgo.{\ce deep_merge} (dst, A, B, occlusion_cull, roi=ROI.All, nthreads=0)}
 \index{ImageBufAlgo!deep_merge} \indexapi{deep_merge} \index{deep images}
 
-\NEW % 1.7
 Merge the samples of two \emph{deep} images {\cf A} and {\cf B} into deep
 result {\cf dst}. If {\cf occlusion_cull} is {\cf True}, samples beyond
 the first opaque sample will be discarded, otherwise they will be kept.
@@ -3075,6 +3159,25 @@ the first opaque sample will be discarded, otherwise they will be kept.
     ImageBufAlgo.deep_merge (Merged, DeepA, DeepB)
 \end{code}
 \apiend
+
+\apiitem{bool ImageBufAlgo.{\ce deep_holdout} (dst, src, holdout, roi=ROI.All, nthreads=0)}
+\index{ImageBufAlgo!deep_holdout} \indexapi{deep_holdout} \index{deep images}
+
+Set the pixels of {\cf dst} to the pixels of {\cf src}, but only copying the
+samples that are closer than the opaque frontier of image {\cf holdout}.
+That is, {\cf holdout} will serve as a depth holdout mask, but no samples
+from {\cf holdout} will actually be copied to {\cf dst}.
+
+\smallskip
+\noindent Examples:
+\begin{code}
+    Img = ImageBuf("image.exr")
+    Mask = ImageBuf("mask.exr")
+    Thresholded = ImageBuf()
+    ImageBufAlgo.deep_holdout (Thresholded, Img, Mask)
+\end{code}
+\apiend
+
 
 \subsection*{Other ImageBufAlgo methods that understand deep images}
 
@@ -3134,7 +3237,6 @@ recognized attribute.
 {\ce get_int_attribute} (name, defaultval=0) \\
 {\ce get_float_attribute} (name, defaultval=0.0) \\
 {\ce get_string_attribute} (name, defaultval="")}
-\NEW % 1.7
 Retrieves an attribute value from the named set of global OIIO options. (See
 Section~\ref{sec:globalattribute}.) The {\cf getattribute()} function
 returns the value regardless of type, or {\cf None} if the attribute does

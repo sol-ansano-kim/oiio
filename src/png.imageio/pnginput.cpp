@@ -36,17 +36,10 @@
 
 #include "png_pvt.h"
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/typedesc.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/fmath.h"
-
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
 
-class PNGInput : public ImageInput {
+class PNGInput final : public ImageInput {
 public:
     PNGInput () { init(); }
     virtual ~PNGInput () { close(); }

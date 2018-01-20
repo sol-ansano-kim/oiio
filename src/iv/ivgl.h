@@ -42,19 +42,16 @@
 #endif
 
 // included to remove std::min/std::max errors
-#include "OpenImageIO/platform.h"
+#include <OpenImageIO/platform.h>
 
 #include <vector>
 
-// This needs to be included before GL.h
-#include <glew.h>
+#include <QGLWidget>
 
-#include <QtOpenGL/QGLWidget>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/imagebuf.h>
 
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/imagebuf.h"
-
-OIIO_NAMESPACE_USING;
+using namespace OIIO;
 
 class IvImage;
 class ImageViewer;

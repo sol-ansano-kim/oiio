@@ -34,18 +34,29 @@
 #include <cmath>
 #include <algorithm>
 
-#include <boost/regex.hpp>
 #include <boost/thread/tss.hpp>
 
 #include <tiffio.h>
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/typedesc.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/typedesc.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/thread.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
+#include "imageio_pvt.h"
+
+#ifdef USE_BOOST_REGEX
+# include <boost/regex.hpp>
+  using boost::regex;
+  using boost::regex_replace;
+#else
+# include <regex>
+  using std::regex;
+  using std::regex_replace;
+#endif
+
 
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -92,7 +103,7 @@ struct TIFF_tag_info {
 
 
 
-class TIFFInput : public ImageInput {
+class TIFFInput final : public ImageInput {
 public:
     TIFFInput ();
     virtual ~TIFFInput ();
@@ -225,8 +236,9 @@ private:
         return ok;
     }
 
-    // Get a string tiff tag field and put it into extra_params
-    void get_string_attribute (const std::string &name, int tag) {
+    // Get a string tiff tag field and save it it as a string_view. The
+    // return value will be true if the tag was found, otherwise false.
+    bool tiff_get_string_field (int tag, string_view &result) {
         char *s = NULL;
         void *ptr = NULL;  // dummy -- expect it to stay NULL
         bool ok = TIFFGetField (m_tif, tag, &s, &ptr);
@@ -237,35 +249,43 @@ private:
             // and try it again with 2 args, first one is count.
             unsigned short count;
             ok = TIFFGetField (m_tif, tag, &count, &s);
-            m_spec.attribute (name, string_view(s,count));
+            result = string_view (s, count);
         }
         else if (ok && s && *s)
+            result = string_view (s);
+        return ok;
+    }
+
+    // Get a string tiff tag field and put it into extra_params
+    void get_string_attribute (string_view name, int tag) {
+        string_view s;
+        if (tiff_get_string_field (tag, s))
             m_spec.attribute (name, s);
     }
 
     // Get a matrix tiff tag field and put it into extra_params
-    void get_matrix_attribute (const std::string &name, int tag) {
+    void get_matrix_attribute (string_view name, int tag) {
         float *f = NULL;
         if (safe_tiffgetfield (name, tag, &f) && f)
-            m_spec.attribute (name, TypeDesc::TypeMatrix, f);
+            m_spec.attribute (name, TypeMatrix, f);
     }
 
     // Get a float tiff tag field and put it into extra_params
-    void get_float_attribute (const std::string &name, int tag) {
+    void get_float_attribute (string_view name, int tag) {
         float f[16];
         if (safe_tiffgetfield (name, tag, f))
             m_spec.attribute (name, f[0]);
     }
 
     // Get an int tiff tag field and put it into extra_params
-    void get_int_attribute (const std::string &name, int tag) {
+    void get_int_attribute (string_view name, int tag) {
         int i;
         if (safe_tiffgetfield (name, tag, &i))
             m_spec.attribute (name, i);
     }
 
     // Get an int tiff tag field and put it into extra_params
-    void get_short_attribute (const std::string &name, int tag) {
+    void get_short_attribute (string_view name, int tag) {
         // Make room for two shorts, in case the tag is not the type we
         // expect, and libtiff writes a long instead.
         unsigned short s[2] = {0,0};
@@ -277,7 +297,7 @@ private:
 
     // Search for TIFF tag 'tagid' having type 'tifftype', and if found,
     // add it in the obvious way to m_spec under the name 'oiioname'.
-    void find_tag (int tifftag, TIFFDataType tifftype, const char *oiioname) {
+    void find_tag (int tifftag, TIFFDataType tifftype, string_view oiioname) {
 #ifdef TIFF_VERSION_BIG
         const TIFFField *info = TIFFFindField (m_tif, tifftag, tifftype);
 #else
@@ -676,15 +696,43 @@ TIFFInput::readspec (bool read_meta)
         m_spec.nchannels = (int)m_inputchannels;
     }
 
-    float x = 0, y = 0;
-    TIFFGetField (m_tif, TIFFTAG_XPOSITION, &x);
-    TIFFGetField (m_tif, TIFFTAG_YPOSITION, &y);
-    m_spec.x = (int)x;
-    m_spec.y = (int)y;
+    float xpos = 0, ypos = 0;
+    TIFFGetField (m_tif, TIFFTAG_XPOSITION, &xpos);
+    TIFFGetField (m_tif, TIFFTAG_YPOSITION, &ypos);
+    if (xpos || ypos) {
+        // In the TIFF files, the positions are in resolutionunit. But we
+        // didn't used to interpret it that way, hence the mess below.
+        float xres = 1, yres = 1;
+        TIFFGetField (m_tif, TIFFTAG_XRESOLUTION, &xres);
+        TIFFGetField (m_tif, TIFFTAG_YRESOLUTION, &yres);
+        // See if the 'Software' field has a clue about what version of OIIO
+        // wrote the TIFF file. This can save us from embarrassing mistakes
+        // misinterpreting the image offset.
+        int oiio_write_version = 0;
+        string_view software;
+        if (tiff_get_string_field (TIFFTAG_SOFTWARE, software)
+            && Strutil::parse_prefix (software, "OpenImageIO")) {
+            int major = 0, minor = 0, patch = 0;
+            if (Strutil::parse_int(software, major)
+                && Strutil::parse_char(software,'.')
+                && Strutil::parse_int(software, minor)
+                && Strutil::parse_char(software,'.')
+                && Strutil::parse_int(software, patch)) {
+                oiio_write_version = major*10000 + minor*100 + patch;
+            }
+        }
+        // Old version of OIIO did not write the field correctly, so try
+        // to compensate.
+        if (oiio_write_version && oiio_write_version < 10803) {
+            xres = yres = 1.0f;
+        }
+        m_spec.x = (int)(xpos*xres);
+        m_spec.y = (int)(ypos*yres);
+    } else {
+        m_spec.x = 0;
+        m_spec.y = 0;
+    }
     m_spec.z = 0;
-    // FIXME? - TIFF spec describes the positions as in resolutionunit.
-    // What happens if this is not unitless pixels?  Are we interpreting
-    // it all wrong?
 
     // Start by assuming the "full" (aka display) window is the same as the
     // data window. That's what we'll stick to if there is no further
@@ -937,7 +985,7 @@ TIFFInput::readspec (bool read_meta)
         TIFFSetDirectory (m_tif, m_subimage);
 
         // A few tidbits to look for
-        ImageIOParameter *p;
+        ParamValue *p;
         if ((p = m_spec.find_attribute ("Exif:ColorSpace", TypeDesc::INT))) {
             // Exif spec says that anything other than 0xffff==uncalibrated
             // should be interpreted to be sRGB.
@@ -1007,7 +1055,7 @@ TIFFInput::readspec (bool read_meta)
         m_spec.attribute ("oiio:ConstantColor", s);
         const std::string constcolor_pattern =
             std::string ("oiio:ConstantColor=(\\[?") + fp_number_pattern + ",?)+\\]?[ ]*";
-        desc = boost::regex_replace (desc, boost::regex(constcolor_pattern), "");
+        desc = regex_replace (desc, regex(constcolor_pattern), "");
         updatedDesc = true;
     }
     found = desc.rfind ("oiio:AverageColor=");
@@ -1018,7 +1066,7 @@ TIFFInput::readspec (bool read_meta)
         m_spec.attribute ("oiio:AverageColor", s);
         const std::string average_pattern =
             std::string ("oiio:AverageColor=(\\[?") + fp_number_pattern + ",?)+\\]?[ ]*";
-        desc = boost::regex_replace (desc, boost::regex(average_pattern), "");
+        desc = regex_replace (desc, regex(average_pattern), "");
         updatedDesc = true;
     }
     found = desc.rfind ("oiio:SHA-1=");
@@ -1029,8 +1077,8 @@ TIFFInput::readspec (bool read_meta)
         size_t end = std::min (begin+40, desc.size());
         string_view s = string_view (desc.data()+begin, end-begin);
         m_spec.attribute ("oiio:SHA-1", s);
-        desc = boost::regex_replace (desc, boost::regex("oiio:SHA-1=[[:xdigit:]]*[ ]*"), "");
-        desc = boost::regex_replace (desc, boost::regex("SHA-1=[[:xdigit:]]*[ ]*"), "");
+        desc = regex_replace (desc, regex("oiio:SHA-1=[[:xdigit:]]*[ ]*"), "");
+        desc = regex_replace (desc, regex("SHA-1=[[:xdigit:]]*[ ]*"), "");
         updatedDesc = true;
     }
     if (updatedDesc) {
@@ -1039,6 +1087,9 @@ TIFFInput::readspec (bool read_meta)
         else
             m_spec.erase_attribute ("ImageDescription");
     }
+
+    // Squash some problematic texture metadata if we suspect it's wrong
+    pvt::check_texture_metadata_sanity (m_spec);
 
     if (m_testopenconfig)  // open-with-config debugging
         m_spec.attribute ("oiio:DebugOpenConfig!", 42);
@@ -1088,7 +1139,7 @@ TIFFInput::readspec_photometric ()
                 for (int i = 0; i < int(numberofinks); ++i) {
                     string_view ink (inknames);
                     if (ink.size()) {
-                        m_spec.channelnames.push_back (ink);
+                        m_spec.channelnames.emplace_back (ink);
                         inknames += ink.size() + 1;
                     } else {
                         // Run out of road
@@ -1100,7 +1151,7 @@ TIFFInput::readspec_photometric ()
             }
             // No ink names. Make it up.
             for (int i = numberofinks; i < m_spec.nchannels; ++i)
-                m_spec.channelnames.push_back (Strutil::format ("ink%d", i));
+                m_spec.channelnames.emplace_back (Strutil::format ("ink%d", i));
         }
         break;
         }

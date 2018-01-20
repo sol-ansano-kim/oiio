@@ -1,5 +1,5 @@
 /*
-  Copyright 2013 Larry Gritz and the other authors and contributors.
+  Copyright 2016 Larry Gritz and the other authors and contributors.
   All Rights Reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -28,17 +28,16 @@
   (This is the Modified BSD License)
 */
 
-#include "OpenImageIO/imageio.h"
+#include <OpenImageIO/imageio.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
-// This probably won't ever be implemented as RAW formats usually come
-// directly from image sensors
+// FIXME: Writer needed some day
 
 OIIO_PLUGIN_EXPORTS_BEGIN
 
-OIIO_EXPORT ImageOutput *raw_output_imageio_create () { return NULL; }
-OIIO_EXPORT const char *raw_output_extensions[] = { NULL };
+OIIO_EXPORT ImageOutput *dicom_output_imageio_create () { return NULL; }
+OIIO_EXPORT const char *dicom_output_extensions[] = { NULL };
 
 OIIO_PLUGIN_EXPORTS_END
 

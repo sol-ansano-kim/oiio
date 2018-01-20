@@ -33,10 +33,10 @@
 #include <cstdio>
 #include <algorithm>
 
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/color.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/color.h>
 #include "jpeg_pvt.h"
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -171,8 +171,7 @@ bool
 JpgInput::open (const std::string &name, ImageSpec &newspec,
                 const ImageSpec &config)
 {
-    const ImageIOParameter *p = config.find_attribute ("_jpeg:raw",
-                                                       TypeDesc::TypeInt);
+    const ParamValue *p = config.find_attribute ("_jpeg:raw", TypeInt);
     m_raw = p && *(int *)p->data();
     return open (name, newspec);
 }

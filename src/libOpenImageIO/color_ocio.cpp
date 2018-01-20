@@ -29,16 +29,16 @@
 */
 
 #include <cmath>
-#include <vector>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <OpenEXR/half.h>
 
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/color.h"
-#include "OpenImageIO/imagebufalgo.h"
-#include "OpenImageIO/imagebufalgo_util.h"
-#include "OpenImageIO/refcnt.h"
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/color.h>
+#include <OpenImageIO/imagebufalgo.h>
+#include <OpenImageIO/imagebufalgo_util.h>
 
 #ifdef USE_OCIO
 #include <OpenColorIO/OpenColorIO.h>
@@ -76,7 +76,7 @@ public:
     ~Impl() { }
     void inventory ();
     void add (const std::string &name, int index) {
-        colorspaces.push_back (std::pair<std::string,int> (name, index));
+        colorspaces.emplace_back(name, index);
     }
 };
 
@@ -409,9 +409,9 @@ public:
             for (int y = 0;  y < height;  ++y) {
                 char *d = (char *)data + y*ystride;
                 for (int x = 0;  x < width;  ++x, d += xstride) {
-                    simd::float4 r;
+                    simd::vfloat4 r;
                     r.load ((float *)d, 3);
-                    r = sRGB_to_linear (simd::float4((float *)d));
+                    r = sRGB_to_linear (simd::vfloat4((float *)d));
                     r.store ((float *)d, 3);
                 }
             }
@@ -443,9 +443,9 @@ public:
             for (int y = 0;  y < height;  ++y) {
                 char *d = (char *)data + y*ystride;
                 for (int x = 0;  x < width;  ++x, d += xstride) {
-                    simd::float4 r;
+                    simd::vfloat4 r;
                     r.load ((float *)d, 3);
-                    r = linear_to_sRGB (simd::float4((float *)d));
+                    r = linear_to_sRGB (simd::vfloat4((float *)d));
                     r.store ((float *)d, 3);
                 }
             }
@@ -505,6 +505,45 @@ public:
     }
 };
 
+
+
+// ColorProcessor that performs gamma correction
+class ColorProcessor_gamma : public ColorProcessor {
+public:
+    ColorProcessor_gamma (float gamma)
+        : ColorProcessor(), m_gamma(gamma)
+    { };
+    ~ColorProcessor_gamma () { };
+
+    virtual void apply (float *data, int width, int height, int channels,
+                        stride_t chanstride, stride_t xstride,
+                        stride_t ystride) const
+    {
+        if (channels > 3)
+            channels = 3;
+        if (channels == 3) {
+            simd::vfloat4 g = m_gamma;
+            for (int y = 0;  y < height;  ++y) {
+                char *d = (char *)data + y*ystride;
+                for (int x = 0;  x < width;  ++x, d += xstride) {
+                    simd::vfloat4 r;
+                    r.load ((float *)d, 3);
+                    r = fast_pow_pos (simd::vfloat4((float *)d), g);
+                    r.store ((float *)d, 3);
+                }
+            }
+        } else {
+            for (int y = 0;  y < height;  ++y) {
+                char *d = (char *)data + y*ystride;
+                for (int x = 0;  x < width;  ++x, d += xstride)
+                    for (int c = 0;  c < channels;  ++c)
+                        ((float *)d)[c] = powf (((float *)d)[c], m_gamma);
+            }
+        }
+    }
+private:
+    float m_gamma;
+};
 
 
 // ColorProcessor that does nothing (identity transform)
@@ -620,6 +659,22 @@ ColorConfig::createColorProcessor (string_view inputColorSpace,
         (iequals(outputColorSpace,"linear") || iequals(outputrole,"linear") ||
          iequals(outputColorSpace,"lnf") || iequals(outputColorSpace,"lnh"))) {
         return new ColorProcessor_Rec709_to_linear;
+    }
+    if ((iequals(inputColorSpace,"linear") || iequals(inputrole,"linear") ||
+         iequals(inputColorSpace,"lnf") || iequals(inputColorSpace,"lnh")) &&
+        istarts_with(outputColorSpace,"GammaCorrected")) {
+        string_view gamstr = outputColorSpace;
+        Strutil::parse_prefix (gamstr, "GammaCorrected");
+        float g = from_string<float>(gamstr);
+        return new ColorProcessor_gamma(1.0f/g);
+    }
+    if (istarts_with(inputColorSpace,"GammaCorrected") &&
+        (iequals(outputColorSpace,"linear") || iequals(outputrole,"linear") ||
+         iequals(outputColorSpace,"lnf") || iequals(outputColorSpace,"lnh"))) {
+        string_view gamstr = inputColorSpace;
+        Strutil::parse_prefix (gamstr, "GammaCorrected");
+        float g = from_string<float>(gamstr);
+        return new ColorProcessor_gamma(g);
     }
 
 #ifdef USE_OCIO
@@ -825,18 +880,8 @@ ColorConfig::deleteColorProcessor (ColorProcessor * processor)
 // Image Processing Implementations
 
 
-static OIIO::shared_ptr<ColorConfig> default_colorconfig;  // default color config
+static std::shared_ptr<ColorConfig> default_colorconfig;  // default color config
 static spin_mutex colorconfig_mutex;
-
-
-
-bool
-ImageBufAlgo::colorconvert (ImageBuf &dst, const ImageBuf &src,
-                            string_view from, string_view to,
-                            bool unpremult, ROI roi, int nthreads)
-{
-    return colorconvert (dst, src, from, to, unpremult, NULL, roi, nthreads);
-}
 
 
 
@@ -903,98 +948,88 @@ colorconvert_impl (ImageBuf &R, const ImageBuf &A,
                    const ColorProcessor* processor, bool unpremult,
                    ROI roi, int nthreads)
 {
-    if (nthreads != 1 && roi.npixels() >= 1000) {
-        // Possible multiple thread case -- recurse via parallel_image
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(colorconvert_impl<Rtype,Atype>,
-                        OIIO::ref(R), OIIO::cref(A), processor, unpremult,
-                        _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
+    using namespace ImageBufAlgo;
+    parallel_image (roi, parallel_image_options(nthreads), [&](ROI roi){
+        int width = roi.width();
+        // Temporary space to hold one RGBA scanline
+        std::vector<float> scanline(width*4, 0.0f);
 
-    // Serial case
+        // Only process up to, and including, the first 4 channels.  This
+        // does let us process images with fewer than 4 channels, which is
+        // the intent.
+        // FIXME: Instead of loading the first 4 channels, obey
+        //        Rspec.alpha_channel index (but first validate that the
+        //        index is set properly for normal formats)
 
-    int width = roi.width();
-    // Temporary space to hold one RGBA scanline
-    std::vector<float> scanline(width*4, 0.0f);
-    
-    // Only process up to, and including, the first 4 channels.  This
-    // does let us process images with fewer than 4 channels, which is
-    // the intent.
-    // FIXME: Instead of loading the first 4 channels, obey
-    //        Rspec.alpha_channel index (but first validate that the
-    //        index is set properly for normal formats)
-    
-    int channelsToCopy = std::min (4, roi.nchannels());
-    
-    // Walk through all data in our buffer. (i.e., crop or overscan)
-    // FIXME: What about the display window?  Should this actually promote
-    // the datawindow to be union of data + display? This is useful if
-    // the color of black moves.  (In which case non-zero sections should
-    // now be promoted).  Consider the lin->log of a roto element, where
-    // black now moves to non-black.
-    
-    float * dstPtr = NULL;
-    const float fltmin = std::numeric_limits<float>::min();
-    
-    // If the processor has crosstalk, and we'll be using it, we should
-    // reset the channels to 0 before loading each scanline.
-    bool clearScanline = (channelsToCopy<4 && 
-                          (processor->hasChannelCrosstalk() || unpremult));
-    
-    ImageBuf::ConstIterator<Atype> a (A, roi);
-    ImageBuf::Iterator<Rtype> r (R, roi);
-    for (int k = roi.zbegin; k < roi.zend; ++k) {
-        for (int j = roi.ybegin; j < roi.yend; ++j) {
-            // Clear the scanline
-            if (clearScanline)
-                memset (&scanline[0], 0, sizeof(float)*scanline.size());
-            
-            // Load the scanline
-            dstPtr = &scanline[0];
-            a.rerange (roi.xbegin, roi.xend, j, j+1, k, k+1);
-            for ( ; !a.done(); ++a, dstPtr += 4)
-                for (int c = 0; c < channelsToCopy; ++c)
-                    dstPtr[c] = a[c];
+        int channelsToCopy = std::min (4, roi.nchannels());
 
-            // Optionally unpremult
-            if ((channelsToCopy >= 4) && unpremult) {
-                for (int i = 0; i < width; ++i) {
-                    float alpha = scanline[4*i+3];
-                    if (alpha > fltmin) {
-                        scanline[4*i+0] /= alpha;
-                        scanline[4*i+1] /= alpha;
-                        scanline[4*i+2] /= alpha;
+        // Walk through all data in our buffer. (i.e., crop or overscan)
+        // FIXME: What about the display window?  Should this actually promote
+        // the datawindow to be union of data + display? This is useful if
+        // the color of black moves.  (In which case non-zero sections should
+        // now be promoted).  Consider the lin->log of a roto element, where
+        // black now moves to non-black.
+        float * dstPtr = NULL;
+        const float fltmin = std::numeric_limits<float>::min();
+
+        // If the processor has crosstalk, and we'll be using it, we should
+        // reset the channels to 0 before loading each scanline.
+        bool clearScanline = (channelsToCopy<4 &&
+                              (processor->hasChannelCrosstalk() || unpremult));
+
+        ImageBuf::ConstIterator<Atype> a (A, roi);
+        ImageBuf::Iterator<Rtype> r (R, roi);
+        for (int k = roi.zbegin; k < roi.zend; ++k) {
+            for (int j = roi.ybegin; j < roi.yend; ++j) {
+                // Clear the scanline
+                if (clearScanline)
+                    memset (&scanline[0], 0, sizeof(float)*scanline.size());
+
+                // Load the scanline
+                dstPtr = &scanline[0];
+                a.rerange (roi.xbegin, roi.xend, j, j+1, k, k+1);
+                for ( ; !a.done(); ++a, dstPtr += 4)
+                    for (int c = 0; c < channelsToCopy; ++c)
+                        dstPtr[c] = a[c];
+
+                // Optionally unpremult
+                if ((channelsToCopy >= 4) && unpremult) {
+                    for (int i = 0; i < width; ++i) {
+                        float alpha = scanline[4*i+3];
+                        if (alpha > fltmin) {
+                            scanline[4*i+0] /= alpha;
+                            scanline[4*i+1] /= alpha;
+                            scanline[4*i+2] /= alpha;
+                        }
                     }
                 }
-            }
-            
-            // Apply the color transformation in place
-            processor->apply (&scanline[0], width, 1, 4,
-                              sizeof(float), 4*sizeof(float),
-                              width*4*sizeof(float));
-            
-            // Optionally premult
-            if ((channelsToCopy >= 4) && unpremult) {
-                for (int i = 0; i < width; ++i) {
-                    float alpha = scanline[4*i+3];
-                    if (alpha > fltmin) {
-                        scanline[4*i+0] *= alpha;
-                        scanline[4*i+1] *= alpha;
-                        scanline[4*i+2] *= alpha;
+
+                // Apply the color transformation in place
+                processor->apply (&scanline[0], width, 1, 4,
+                                  sizeof(float), 4*sizeof(float),
+                                  width*4*sizeof(float));
+
+                // Optionally premult
+                if ((channelsToCopy >= 4) && unpremult) {
+                    for (int i = 0; i < width; ++i) {
+                        float alpha = scanline[4*i+3];
+                        if (alpha > fltmin) {
+                            scanline[4*i+0] *= alpha;
+                            scanline[4*i+1] *= alpha;
+                            scanline[4*i+2] *= alpha;
+                        }
                     }
                 }
-            }
 
-            // Store the scanline
-            dstPtr = &scanline[0];
-            r.rerange (roi.xbegin, roi.xend, j, j+1, k, k+1);
-            for ( ; !r.done(); ++r, dstPtr += 4)
-                for (int c = 0; c < channelsToCopy; ++c)
-                    r[c] = dstPtr[c];
+                // Store the scanline
+                dstPtr = &scanline[0];
+                r.rerange (roi.xbegin, roi.xend, j, j+1, k, k+1);
+                for ( ; !r.done(); ++r, dstPtr += 4)
+                    for (int c = 0; c < channelsToCopy; ++c)
+                        r[c] = dstPtr[c];
+            }
         }
-    }
+    });
     return true;
 }
 
@@ -1032,19 +1067,6 @@ ImageBufAlgo::colorconvert (ImageBuf &dst, const ImageBuf &src,
                                  dst.spec().format, src.spec().format,
                                  dst, src, processor, unpremult, roi, nthreads);
     return ok;
-}
-
-
-
-bool
-ImageBufAlgo::ociolook (ImageBuf &dst, const ImageBuf &src,
-                        string_view looks, string_view from, string_view to,
-                        bool inverse, bool unpremult,
-                        string_view key, string_view value,
-                        ROI roi, int nthreads)
-{
-    return ociolook (dst, src, looks, from, to, inverse, unpremult,
-                     key, value, NULL, roi, nthreads);
 }
 
 
@@ -1092,20 +1114,6 @@ ImageBufAlgo::ociolook (ImageBuf &dst, const ImageBuf &src,
         colorconfig->deleteColorProcessor (processor);
     }
     return ok;
-}
-
-
-    
-bool
-ImageBufAlgo::ociodisplay (ImageBuf &dst, const ImageBuf &src,
-                           string_view display, string_view view,
-                           string_view from, string_view looks,
-                           bool unpremult,
-                           string_view key, string_view value,
-                           ROI roi, int nthreads)
-{
-    return ociodisplay (dst, src, display, view, from, looks, unpremult,
-                        key, value, NULL, roi, nthreads);
 }
 
 

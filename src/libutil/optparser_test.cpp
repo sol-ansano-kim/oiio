@@ -34,12 +34,12 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "OpenImageIO/platform.h"
-#include "OpenImageIO/optparser.h"
-#include "OpenImageIO/unittest.h"
+#include <OpenImageIO/platform.h>
+#include <OpenImageIO/optparser.h>
+#include <OpenImageIO/unittest.h>
 
 
-OIIO_NAMESPACE_USING;
+using namespace OIIO;
 
 
 class MySystem {

@@ -63,6 +63,8 @@ try:
     s.default_channel_names()
     s.channelformats = (oiio.UINT8, oiio.UINT8, oiio.UINT8, oiio.UINT8, oiio.FLOAT)
     print_imagespec (s, "lots of fields")
+    print " B channel =", s.channelindex("B")
+    print " foo channel =", s.channelindex("foo")
 
     print "channel bytes =", s.channel_bytes()
     print "  channel_bytes(1) =", s.channel_bytes(1), "native", s.channel_bytes(1,True)
@@ -105,6 +107,11 @@ try:
         print i, s.extra_attribs[i].name, s.extra_attribs[i].type, s.extra_attribs[i].value
         print s.metadata_val (s.extra_attribs[i], True)
     print
+
+    # test initialization from ROI
+    print ("Testing construction from ROI:")
+    sroi = oiio.ImageSpec (oiio.ROI(0,640,0,480,0,1,0,3), oiio.FLOAT);
+    print_imagespec (sroi)
 
     # Also test global OIIO functions here
     print "\nTesting global attribute store/retrieve:"

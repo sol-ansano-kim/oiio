@@ -29,9 +29,9 @@
 */
 #include <vector>
 #include "openjpeg.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/imageio.h"
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/imageio.h>
 
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -55,7 +55,7 @@ openjpeg_dummy_callback(const char *msg, void *data)
 
 
 
-class Jpeg2000Output : public ImageOutput {
+class Jpeg2000Output final : public ImageOutput {
  public:
     Jpeg2000Output () { init (); }
     virtual ~Jpeg2000Output () { close (); }
@@ -360,7 +360,7 @@ Jpeg2000Output::create_jpeg2000_image()
         color_space = OPJ_CLRSPC_GRAY;
 
     int precision = 16;
-    const ImageIOParameter *prec = m_spec.find_attribute ("oiio:BitsPerSample",
+    const ParamValue *prec = m_spec.find_attribute ("oiio:BitsPerSample",
                                                           TypeDesc::INT);
     if (prec)
         precision = *(int*)prec->data();
@@ -388,7 +388,7 @@ Jpeg2000Output::create_jpeg2000_image()
     // someboody comes along that desperately needs JPEG2000 and ICC
     // profiles, maybe they will be motivated enough to track down the
     // problem.
-    const ImageIOParameter *icc = m_spec.find_attribute ("ICCProfile");
+    const ParamValue *icc = m_spec.find_attribute ("ICCProfile");
     if (icc && icc->type().basetype == TypeDesc::UINT8 && icc->type().arraylen > 0) {
         m_image->icc_profile_len = icc->type().arraylen;
         m_image->icc_profile_buf = (unsigned char *) icc->data();
@@ -441,7 +441,7 @@ Jpeg2000Output::write_scanline(int y, int z, const void *data)
     for (int i = 0, j = 0; i < m_spec.width; i++) {
         for (int c = 0; c < m_spec.nchannels; ++c) {
             unsigned int val = scanline[j++];
-            if (bits != m_image->comps[c].prec)
+            if (bits != int(m_image->comps[c].prec))
                 val = bit_range_convert (val, bits, m_image->comps[c].prec);
             m_image->comps[c].data[scanline_pos + i] = val;
         }
@@ -508,34 +508,34 @@ void Jpeg2000Output::setup_compression_params()
     m_compression_parameters.tcp_numlayers++;
     m_compression_parameters.cp_disto_alloc = 1;
 
-    const ImageIOParameter *is_cinema2k = m_spec.find_attribute ("jpeg2000:Cinema2K",
+    const ParamValue *is_cinema2k = m_spec.find_attribute ("jpeg2000:Cinema2K",
                                                                  TypeDesc::UINT);
     if (is_cinema2k)
         setup_cinema_compression(OPJ_CINEMA2K);
 
-    const ImageIOParameter *is_cinema4k = m_spec.find_attribute ("jpeg2000:Cinema4K",
+    const ParamValue *is_cinema4k = m_spec.find_attribute ("jpeg2000:Cinema4K",
                                                                  TypeDesc::UINT);
     if (is_cinema4k)
         setup_cinema_compression(OPJ_CINEMA4K);
 
-    const ImageIOParameter *initial_cb_width = m_spec.find_attribute ("jpeg2000:InitialCodeBlockWidth",
+    const ParamValue *initial_cb_width = m_spec.find_attribute ("jpeg2000:InitialCodeBlockWidth",
                                                                       TypeDesc::UINT);
     if (initial_cb_width && initial_cb_width->data())
         m_compression_parameters.cblockw_init = *(unsigned int*)initial_cb_width->data();
 
-    const ImageIOParameter *initial_cb_height = m_spec.find_attribute ("jpeg2000:InitialCodeBlockHeight",
+    const ParamValue *initial_cb_height = m_spec.find_attribute ("jpeg2000:InitialCodeBlockHeight",
                                                                        TypeDesc::UINT);
     if (initial_cb_height && initial_cb_height->data())
         m_compression_parameters.cblockh_init = *(unsigned int*)initial_cb_height->data();
 
-    const ImageIOParameter *progression_order = m_spec.find_attribute ("jpeg2000:ProgressionOrder",
+    const ParamValue *progression_order = m_spec.find_attribute ("jpeg2000:ProgressionOrder",
                                                                        TypeDesc::STRING);
     if (progression_order && progression_order->data()) {
         std::string prog_order((const char*)progression_order->data());
         m_compression_parameters.prog_order = get_progression_order(prog_order);
     }
 
-    const ImageIOParameter *compression_mode = m_spec.find_attribute ("jpeg2000:CompressionMode",
+    const ParamValue *compression_mode = m_spec.find_attribute ("jpeg2000:CompressionMode",
                                                                        TypeDesc::INT);
     if (compression_mode && compression_mode->data())
         m_compression_parameters.mode = *(int*)compression_mode->data();

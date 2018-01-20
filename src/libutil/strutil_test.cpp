@@ -30,10 +30,10 @@
 
 #include <cstdio>
 
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/unittest.h"
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/unittest.h>
 
-OIIO_NAMESPACE_USING;
+using namespace OIIO;
 using namespace Strutil;
 
 
@@ -50,6 +50,10 @@ void test_format ()
 
     // Test '+' format modifier
     OIIO_CHECK_EQUAL (Strutil::format ("%+d%+d%+d", 3, -3, 0), "+3-3+0");
+
+    // Test single string with no args
+    OIIO_CHECK_EQUAL (Strutil::format ("foo"), "foo");
+    OIIO_CHECK_EQUAL (Strutil::format ("%%foo"), "%foo");
 
     // FIXME -- we should make comprehensive tests here
 }
@@ -166,11 +170,28 @@ void test_wordwrap ()
 
 
 
+void test_hash ()
+{
+    OIIO_CHECK_EQUAL (strhash("foo"), 6150913649986995171);
+    OIIO_CHECK_EQUAL (strhash(std::string("foo")), 6150913649986995171);
+    OIIO_CHECK_EQUAL (strhash(string_view("foo")), 6150913649986995171);
+}
+
+
+
 void test_comparisons ()
 {
     OIIO_CHECK_EQUAL (Strutil::iequals ("abc", "abc"), true);
     OIIO_CHECK_EQUAL (Strutil::iequals ("Abc", "aBc"), true);
     OIIO_CHECK_EQUAL (Strutil::iequals ("abc", "adc"), false);
+
+    OIIO_CHECK_EQUAL (Strutil::starts_with ("abcd", "ab"), true);
+    OIIO_CHECK_EQUAL (Strutil::starts_with ("aBcd", "Ab"), false);
+    OIIO_CHECK_EQUAL (Strutil::starts_with ("abcd", "ba"), false);
+    OIIO_CHECK_EQUAL (Strutil::starts_with ("abcd", "abcde"), false);
+    OIIO_CHECK_EQUAL (Strutil::starts_with ("", "a"), false);
+    OIIO_CHECK_EQUAL (Strutil::starts_with ("", ""), true);
+    OIIO_CHECK_EQUAL (Strutil::starts_with ("abc", ""), true);
 
     OIIO_CHECK_EQUAL (Strutil::istarts_with ("abcd", "ab"), true);
     OIIO_CHECK_EQUAL (Strutil::istarts_with ("aBcd", "Ab"), true);
@@ -179,6 +200,15 @@ void test_comparisons ()
     OIIO_CHECK_EQUAL (Strutil::istarts_with ("", "a"), false);
     OIIO_CHECK_EQUAL (Strutil::istarts_with ("", ""), true);
     OIIO_CHECK_EQUAL (Strutil::istarts_with ("abc", ""), true);
+
+    OIIO_CHECK_EQUAL (Strutil::ends_with ("abcd", "cd"), true);
+    OIIO_CHECK_EQUAL (Strutil::ends_with ("aBCd", "cd"), false);
+    OIIO_CHECK_EQUAL (Strutil::ends_with ("aBcd", "CD"), false);
+    OIIO_CHECK_EQUAL (Strutil::ends_with ("abcd", "ba"), false);
+    OIIO_CHECK_EQUAL (Strutil::ends_with ("abcd", "xabcd"), false);
+    OIIO_CHECK_EQUAL (Strutil::ends_with ("", "a"), false);
+    OIIO_CHECK_EQUAL (Strutil::ends_with ("", ""), true);
+    OIIO_CHECK_EQUAL (Strutil::ends_with ("abc", ""), true);
 
     OIIO_CHECK_EQUAL (Strutil::iends_with ("abcd", "cd"), true);
     OIIO_CHECK_EQUAL (Strutil::iends_with ("aBCd", "cd"), true);
@@ -276,10 +306,10 @@ void test_split ()
 void test_join ()
 {
     std::vector<std::string> seq;
-    seq.push_back ("Now");
-    seq.push_back ("is");
-    seq.push_back ("the");
-    seq.push_back ("time");
+    seq.emplace_back("Now");
+    seq.emplace_back("is");
+    seq.emplace_back("the");
+    seq.emplace_back("time");
     OIIO_CHECK_EQUAL (Strutil::join (seq, ". "),
                       "Now. is. the. time");
 }
@@ -322,11 +352,34 @@ void test_replace ()
 
 void test_conversion ()
 {
+    std::cout << "Testing string_is, string_from conversions\n";
+    OIIO_CHECK_EQUAL (Strutil::string_is<int>("142"), true);
+    OIIO_CHECK_EQUAL (Strutil::string_is<int>("142.0"), false);
+    OIIO_CHECK_EQUAL (Strutil::string_is<int>(""), false);
+    OIIO_CHECK_EQUAL (Strutil::string_is<int>("foo"), false);
+    OIIO_CHECK_EQUAL (Strutil::string_is<int>("142x"), false);
+    OIIO_CHECK_EQUAL (Strutil::string_is<int>(" 142"), true);
+    OIIO_CHECK_EQUAL (Strutil::string_is<int>("x142"), false);
+
+    OIIO_CHECK_EQUAL (Strutil::string_is<float>("142"), true);
+    OIIO_CHECK_EQUAL (Strutil::string_is<float>("142.0"), true);
+    OIIO_CHECK_EQUAL (Strutil::string_is<float>(""), false);
+    OIIO_CHECK_EQUAL (Strutil::string_is<float>("foo"), false);
+    OIIO_CHECK_EQUAL (Strutil::string_is<float>("142x"), false);
+    OIIO_CHECK_EQUAL (Strutil::string_is<float>(" 142"), true);
+    OIIO_CHECK_EQUAL (Strutil::string_is<float>("x142"), false);
+
     OIIO_CHECK_EQUAL (Strutil::from_string<int>("hi"), 0);
     OIIO_CHECK_EQUAL (Strutil::from_string<int>("123"), 123);
     OIIO_CHECK_EQUAL (Strutil::from_string<int>("-123"), -123);
     OIIO_CHECK_EQUAL (Strutil::from_string<int>(" 123 "), 123);
     OIIO_CHECK_EQUAL (Strutil::from_string<int>("123.45"), 123);
+
+    OIIO_CHECK_EQUAL (Strutil::from_string<unsigned int>("hi"), unsigned(0));
+    OIIO_CHECK_EQUAL (Strutil::from_string<unsigned int>("123"), unsigned(123));
+    OIIO_CHECK_EQUAL (Strutil::from_string<unsigned int>("-123"), unsigned(-123));
+    OIIO_CHECK_EQUAL (Strutil::from_string<unsigned int>(" 123 "), unsigned(123));
+    OIIO_CHECK_EQUAL (Strutil::from_string<unsigned int>("123.45"), unsigned(123));
 
     OIIO_CHECK_EQUAL (Strutil::from_string<float>("hi"), 0.0f);
     OIIO_CHECK_EQUAL (Strutil::from_string<float>("123"), 123.0f);
@@ -401,33 +454,33 @@ void test_safe_strcpy ()
         char result[4] = { '0', '1', '2', '3' };
         Strutil::safe_strcpy (result, "A", 3);
         OIIO_CHECK_EQUAL (result[0], 'A');
-        OIIO_CHECK_EQUAL (result[1],  0);
-        OIIO_CHECK_EQUAL (result[2], '2'); // should not overwrite
-        OIIO_CHECK_EQUAL (result[3], '3'); // should not overwrite
+        OIIO_CHECK_EQUAL (result[1], 0);
+        OIIO_CHECK_EQUAL (result[2], 0);
+        OIIO_CHECK_EQUAL (result[3], '3');
     }
     { // test over-bounds copy
         char result[4] = { '0', '1', '2', '3' };
         Strutil::safe_strcpy (result, "ABC", 3);
         OIIO_CHECK_EQUAL (result[0], 'A');
         OIIO_CHECK_EQUAL (result[1], 'B');
-        OIIO_CHECK_EQUAL (result[2],  0);
-        OIIO_CHECK_EQUAL (result[3], '3'); // should not overwrite
+        OIIO_CHECK_EQUAL (result[2], 0);
+        OIIO_CHECK_EQUAL (result[3], '3');
     }
     { // test empty string copy
         char result[4] = { '0', '1', '2', '3' };
         Strutil::safe_strcpy (result, "", 3);
         OIIO_CHECK_EQUAL (result[0], 0);
-        OIIO_CHECK_EQUAL (result[1], '1'); // should not overwrite
-        OIIO_CHECK_EQUAL (result[2], '2'); // should not overwrite
-        OIIO_CHECK_EQUAL (result[3], '3'); // should not overwrite
+        OIIO_CHECK_EQUAL (result[1], 0);
+        OIIO_CHECK_EQUAL (result[2], 0);
+        OIIO_CHECK_EQUAL (result[3], '3');
     }
     { // test NULL case
         char result[4] = { '0', '1', '2', '3' };
         Strutil::safe_strcpy (result, NULL, 3);
         OIIO_CHECK_EQUAL (result[0], 0);
-        OIIO_CHECK_EQUAL (result[1], '1'); // should not overwrite
-        OIIO_CHECK_EQUAL (result[2], '2'); // should not overwrite
-        OIIO_CHECK_EQUAL (result[3], '3'); // should not overwrite
+        OIIO_CHECK_EQUAL (result[1], 0);
+        OIIO_CHECK_EQUAL (result[2], 0);
+        OIIO_CHECK_EQUAL (result[3], '3');
     }
 }
 
@@ -582,10 +635,10 @@ test_float_formatting ()
         sprintf (buffer, "%.9g", *f);
         std::string tiny = Strutil::format ("%.9g", *f);
         if (sstream.str() != tiny || tiny != buffer)
-            printf ("%x  stream '%s'  printf '%s'  Strutil::format '%s'\n",
-                    i32, sstream.str().c_str(), buffer, tiny.c_str());
+            Strutil::printf ("%x  stream '%s'  printf '%s'  Strutil::format '%s'\n",
+                    i32, sstream.str(), buffer, tiny);
         if ((i32 & 0xfffffff) == 0xfffffff) {
-            printf ("%x\n", i32);
+            Strutil::printf ("%x\n", i32);
             fflush (stdout);
         }
     }
@@ -602,6 +655,7 @@ main (int argc, char *argv[])
     test_get_rest_arguments ();
     test_escape_sequences ();
     test_wordwrap ();
+    test_hash ();
     test_comparisons ();
     test_case ();
     test_strip ();

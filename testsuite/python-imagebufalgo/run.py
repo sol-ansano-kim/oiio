@@ -11,6 +11,7 @@ refdirlist = [
     "../../../../testsuite/oiiotool-deep/ref/",
     "../../../../testsuite/oiiotool-pattern/ref/",
     "../../../../testsuite/oiiotool-text/ref/",
+    "../../../../testsuite/oiiotool-xform/ref/",
     refdir
 ]
 
@@ -37,7 +38,8 @@ outputs = ["black.tif", "filled.tif", "checker.tif",
            "cpow1.exr", "cpow2.exr",
            "div.exr", "divc1.exr", "divc2.exr",
            "invert.tif",
-           "chsum.tif", "grid-clamped.tif",
+           "chsum.tif", "colormap-spectrum.tif", "colormap-custom.tif",
+           "grid-clamped.tif",
            "rangecompress.tif", "rangeexpand.tif",
            "resize.tif", "resample.tif",
            "bsplinekernel.exr", "bspline-blur.tif", "tahoe-median.tif",
@@ -48,7 +50,7 @@ outputs = ["black.tif", "filled.tif", "checker.tif",
            "box3.exr",
            "a_over_b.exr",
            "tahoe-small.tx",
-           "text.tif",
+           "text.tif", "textcentered.tif",
            "out.txt"
          ]
     # command += checkref (f)

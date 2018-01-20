@@ -34,10 +34,10 @@
 
 #include "dds_pvt.h"
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/typedesc.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/typedesc.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/fmath.h>
 
 #include "squish/squish.h"
 
@@ -48,7 +48,7 @@ using namespace DDS_pvt;
 // uncomment the following define to enable 3x2 cube map layout
 //#define DDS_3X2_CUBE_MAP_LAYOUT
 
-class DDSInput : public ImageInput {
+class DDSInput final : public ImageInput {
 public:
     DDSInput () { init(); }
     virtual ~DDSInput () { close(); }

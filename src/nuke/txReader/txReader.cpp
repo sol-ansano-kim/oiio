@@ -6,7 +6,7 @@
 #include "DDImage/Reader.h"
 #include "DDImage/Row.h"
 
-#include "OpenImageIO/imageio.h"
+#include <OpenImageIO/imageio.h>
 
 
 using namespace DD::Image;
@@ -27,7 +27,7 @@ namespace TxReaderNS
 {
 
 
-OIIO_NAMESPACE_USING
+using namespace OIIO;
 
 
 static const char* const EMPTY[] = {NULL};

@@ -36,14 +36,15 @@
 #include <cmath>
 #include <sstream>
 #include <limits>
-#include <boost/foreach.hpp>
+#include <mutex>
+
 #include <boost/algorithm/string.hpp>
 
-#include "OpenImageIO/platform.h"
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/ustring.h"
-#include "OpenImageIO/string_view.h"
+#include <OpenImageIO/platform.h>
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/ustring.h>
+#include <OpenImageIO/string_view.h>
 
 #ifdef _WIN32
 # include <shellapi.h>
@@ -52,6 +53,12 @@
 
 
 OIIO_NAMESPACE_BEGIN
+
+
+namespace {
+static std::mutex output_mutex;
+};
+
 
 
 const char *
@@ -68,6 +75,29 @@ string_view::c_str() const
     // the ustring table forever. Punt on this for now, it's an edge case
     // that we need to handle, but is not likely to ever be an issue.
     return ustring(m_chars, 0, m_len).c_str();
+}
+
+
+
+void
+Strutil::sync_output (FILE *file, string_view str)
+{
+    if (str.size() && file) {
+        std::unique_lock<std::mutex> lock (output_mutex);
+        fwrite (str.data(), 1, str.size(), file);
+        fflush (file);
+    }
+}
+
+
+
+void
+Strutil::sync_output (std::ostream& file, string_view str)
+{
+    if (str.size()) {
+        std::unique_lock<std::mutex> lock (output_mutex);
+        file << str;
+    }
 }
 
 
@@ -198,7 +228,7 @@ Strutil::get_rest_arguments (const std::string &str, std::string &base,
     std::string rest = str.substr (mark_pos + 1);
     std::vector<std::string> rest_tokens;
     Strutil::split (rest, rest_tokens, "&");
-    BOOST_FOREACH (const std::string &keyval, rest_tokens) {
+    for (const std::string &keyval : rest_tokens) {
         mark_pos = keyval.find_first_of ("=");
         if (mark_pos == std::string::npos)
             return false;
@@ -562,18 +592,17 @@ Strutil::utf16_to_utf8 (const std::wstring& str)
 
 
 char *
-Strutil::safe_strcpy (char *dst, const char *src, size_t size)
+Strutil::safe_strcpy (char *dst, string_view src, size_t size)
 {
-    if (src) {
-        for (size_t i = 0;  i < size;  ++i) {
-            if (! (dst[i] = src[i]))
-                return dst;   // finished, and copied the 0 character
-        }
-        // If we got here, we have gotten to the maximum length, and still
-        // no terminating 0, so add it!
-        dst[size-1] = 0;
+    if (src.size()) {
+        size_t end = std::min (size-1, src.size());
+        for (size_t i = 0;  i < end;  ++i)
+            dst[i] = src[i];
+        for (size_t i = end; i < size; ++i)
+            dst[i] = 0;
     } else {
-        dst[0] = 0;
+        for (size_t i = 0; i < size; ++i)
+            dst[i] = 0;
     }
     return dst;
 }
@@ -693,10 +722,8 @@ Strutil::parse_string (string_view &str, string_view &val,
             break;   // not quoted and we hit whitespace: we're done
         if (quoted && *end == '\"' && ! escaped)
             break;   // closing quite -- we're done (beware embedded quote)
-        if (p[0] == '\\')
-            escaped = true;
+        escaped = (p[0] == '\\');
         ++end;
-        escaped = false;
     }
     if (quoted && keep_quotes == KeepQuotes) {
         if (*end == '\"')
@@ -916,7 +943,7 @@ Strutil::utf8_to_unicode (string_view str, std::vector<uint32_t> &uvec)
     const char* end = str.end();
     uint32_t state = 0;
     for (; begin != end; ++begin) {
-        uint32_t codepoint;
+        uint32_t codepoint = 0;
         if (!decode(&state, &codepoint, (unsigned char) *begin))
             uvec.push_back(codepoint);
     }

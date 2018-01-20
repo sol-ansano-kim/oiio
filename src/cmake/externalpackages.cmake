@@ -4,6 +4,7 @@
 # When not in VERBOSE mode, try to make things as quiet as possible
 if (NOT VERBOSE)
     set (Boost_FIND_QUIETLY true)
+    set (DCMTK_FIND_QUIETLY true)
     set (FFmpeg_FIND_QUIETLY true)
     set (Field3D_FIND_QUIETLY true)
     set (Freetype_FIND_QUIETLY true)
@@ -25,40 +26,13 @@ if (NOT VERBOSE)
     set (PugiXML_FIND_QUIETLY TRUE)
     set (PythonInterp_FIND_QUIETLY true)
     set (PythonLibs_FIND_QUIETLY true)
-    set (Qt4_FIND_QUIETLY true)
+    set (Qt5_FIND_QUIETLY true)
     set (Threads_FIND_QUIETLY true)
     set (TIFF_FIND_QUIETLY true)
     set (WEBP_FIND_QUIETLY true)
     set (ZLIB_FIND_QUIETLY true)
 endif ()
 
-setup_path (THIRD_PARTY_TOOLS_HOME
-            "unknown"
-            "Location of third party libraries in the external project")
-
-# Add all third party tool directories to the include and library paths so
-# that they'll be correctly found by the various FIND_PACKAGE() invocations.
-if (THIRD_PARTY_TOOLS_HOME AND EXISTS "${THIRD_PARTY_TOOLS_HOME}")
-    set (CMAKE_INCLUDE_PATH "${THIRD_PARTY_TOOLS_HOME}/include" "${CMAKE_INCLUDE_PATH}")
-    # Detect third party tools which have been successfully built using the
-    # lock files which are placed there by the external project Makefile.
-    file (GLOB _external_dir_lockfiles "${THIRD_PARTY_TOOLS_HOME}/*.d")
-    foreach (_dir_lockfile ${_external_dir_lockfiles})
-        # Grab the tool directory_name.d
-        get_filename_component (_ext_dirname ${_dir_lockfile} NAME)
-        # Strip off the .d extension
-        string (REGEX REPLACE "\\.d$" "" _ext_dirname ${_ext_dirname})
-        set (CMAKE_INCLUDE_PATH "${THIRD_PARTY_TOOLS_HOME}/include/${_ext_dirname}" ${CMAKE_INCLUDE_PATH})
-        set (CMAKE_LIBRARY_PATH "${THIRD_PARTY_TOOLS_HOME}/lib/${_ext_dirname}" ${CMAKE_LIBRARY_PATH})
-    endforeach ()
-endif ()
-
-
-setup_string (SPECIAL_COMPILE_FLAGS ""
-               "Custom compilation flags")
-if (SPECIAL_COMPILE_FLAGS)
-    add_definitions (${SPECIAL_COMPILE_FLAGS})
-endif ()
 
 
 ###########################################################################
@@ -86,17 +60,14 @@ find_package (PNG REQUIRED)
 ###########################################################################
 # IlmBase & OpenEXR setup
 
-find_package (OpenEXR REQUIRED)
+find_package (OpenEXR 2.0 REQUIRED)
 #OpenEXR 2.2 still has problems with importing ImathInt64.h unqualified
 #thus need for ilmbase/OpenEXR
 include_directories ("${OPENEXR_INCLUDE_DIR}"
                      "${ILMBASE_INCLUDE_DIR}"
                      "${ILMBASE_INCLUDE_DIR}/OpenEXR")
 if (${OPENEXR_VERSION} VERSION_LESS 2.0.0)
-    # OpenEXR 1.x had weird #include dirctives, this is also necessary:
-    include_directories ("${OPENEXR_INCLUDE_DIR}/OpenEXR")
-else ()
-    add_definitions (-DUSE_OPENEXR_VERSION2=1)
+    message (FATAL_ERROR "OpenEXR/Ilmbase is too old")
 endif ()
 if (NOT OpenEXR_FIND_QUIETLY)
     message (STATUS "OPENEXR_INCLUDE_DIR = ${OPENEXR_INCLUDE_DIR}")
@@ -116,10 +87,9 @@ if (NOT Boost_FIND_QUIETLY)
 endif ()
 
 if (NOT DEFINED Boost_ADDITIONAL_VERSIONS)
-  set (Boost_ADDITIONAL_VERSIONS "1.60" "1.59" "1.58" "1.57" "1.56"
-                                 "1.55" "1.54" "1.53" "1.52" "1.51" "1.50"
-                                 "1.49" "1.48" "1.47" "1.46" "1.45" "1.44"
-                                 "1.43" "1.43.0" "1.42" "1.42.0")
+  set (Boost_ADDITIONAL_VERSIONS "1.64" "1.63" "1.62" "1.61" "1.60"
+                                 "1.59" "1.58" "1.57" "1.56" "1.55"
+                                 "1.54" "1.53")
 endif ()
 if (LINKSTATIC)
     set (Boost_USE_STATIC_LIBS   ON)
@@ -131,52 +101,12 @@ if (BOOST_CUSTOM)
     # N.B. For a custom version, the caller had better set up the variables
     # Boost_VERSION, Boost_INCLUDE_DIRS, Boost_LIBRARY_DIRS, Boost_LIBRARIES.
 else ()
-    set (Boost_COMPONENTS filesystem regex system thread)
-    find_package (Boost 1.42 REQUIRED
-                  COMPONENTS ${Boost_COMPONENTS}
-                 )
-
-    # Try to figure out if this boost distro has Boost::python.  If we
-    # include python in the component list above, cmake will abort if
-    # it's not found.  So we resort to checking for the boost_python
-    # library's existance to get a soft failure.
-    find_library (my_boost_python_lib boost_python
-                  PATHS ${Boost_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    mark_as_advanced (my_boost_python_lib)
-    if (NOT my_boost_python_lib AND Boost_SYSTEM_LIBRARY_RELEASE)
-        get_filename_component (my_boost_PYTHON_rel
-                                ${Boost_SYSTEM_LIBRARY_RELEASE} NAME
-                               )
-        string (REGEX REPLACE "^(lib)?(.+)_system(.+)$" "\\2_python\\3"
-                my_boost_PYTHON_rel ${my_boost_PYTHON_rel}
-               )
-        find_library (my_boost_PYTHON_LIBRARY_RELEASE
-                      NAMES ${my_boost_PYTHON_rel} lib${my_boost_PYTHON_rel}
-                      HINTS ${Boost_LIBRARY_DIRS}
-                      NO_DEFAULT_PATH
-                     )
-        mark_as_advanced (my_boost_PYTHON_LIBRARY_RELEASE)
+    set (Boost_COMPONENTS filesystem system thread)
+    if (NOT USE_STD_REGEX)
+        list (APPEND Boost_COMPONENTS regex)
     endif ()
-    if (NOT my_boost_python_lib AND Boost_SYSTEM_LIBRARY_DEBUG)
-        get_filename_component (my_boost_PYTHON_dbg
-                                ${Boost_SYSTEM_LIBRARY_DEBUG} NAME
-                               )
-        string (REGEX REPLACE "^(lib)?(.+)_system(.+)$" "\\2_python\\3"
-                my_boost_PYTHON_dbg ${my_boost_PYTHON_dbg}
-               )
-        find_library (my_boost_PYTHON_LIBRARY_DEBUG
-                      NAMES ${my_boost_PYTHON_dbg} lib${my_boost_PYTHON_dbg}
-                      HINTS ${Boost_LIBRARY_DIRS}
-                      NO_DEFAULT_PATH
-                     )
-        mark_as_advanced (my_boost_PYTHON_LIBRARY_DEBUG)
-    endif ()
-    if (my_boost_python_lib OR
-        my_boost_PYTHON_LIBRARY_RELEASE OR my_boost_PYTHON_LIBRARY_DEBUG)
-        set (boost_PYTHON_FOUND ON)
-    else ()
-        set (boost_PYTHON_FOUND OFF)
-    endif ()
+    find_package (Boost 1.53 REQUIRED
+                  COMPONENTS ${Boost_COMPONENTS})
 endif ()
 
 # On Linux, Boost 1.55 and higher seems to need to link against -lrt
@@ -191,16 +121,6 @@ if (NOT Boost_FIND_QUIETLY)
     message (STATUS "Boost include dirs ${Boost_INCLUDE_DIRS}")
     message (STATUS "Boost library dirs ${Boost_LIBRARY_DIRS}")
     message (STATUS "Boost libraries    ${Boost_LIBRARIES}")
-    message (STATUS "Boost python found ${boost_PYTHON_FOUND}")
-endif ()
-if (NOT boost_PYTHON_FOUND)
-    # If Boost python components were not found, turn off all python support.
-    message (STATUS "Boost python support not found -- will not build python components!")
-    if (APPLE AND USE_PYTHON)
-        message (STATUS "   If your Boost is from Macports, you need the +python26 variant to get Python support.")
-    endif ()
-    set (USE_PYTHON OFF)
-    set (PYTHONLIBS_FOUND OFF)
 endif ()
 
 include_directories (SYSTEM "${Boost_INCLUDE_DIRS}")
@@ -270,19 +190,22 @@ endif ()
 # Qt setup
 
 if (USE_QT)
+    set (qt5_modules Core Gui Widgets)
     if (USE_OPENGL)
-        set (QT_USE_QTOPENGL true)
+        list (APPEND qt5_modules OpenGL)
     endif ()
-    find_package (Qt4)
+    find_package (Qt5 COMPONENTS ${qt5_modules})
 endif ()
-if (USE_QT AND QT4_FOUND)
-    if (NOT Qt4_FIND_QUIETLY)
-        message (STATUS "QT4_FOUND=${QT4_FOUND}")
-        message (STATUS "QT_INCLUDES=${QT_INCLUDES}")
-        message (STATUS "QT_LIBRARIES=${QT_LIBRARIES}")
+if (USE_QT AND Qt5_FOUND)
+    if (NOT Qt5_FIND_QUIETLY)
+        message (STATUS "Qt5_FOUND=${Qt5_FOUND}")
     endif ()
 else ()
-    message (STATUS "No Qt4 -- skipping components that need Qt4.")
+    message (STATUS "No Qt5 -- skipping components that need Qt5.")
+    if (USE_QT AND NOT Qt5_FOUND AND APPLE)
+        message (STATUS "If you think you installed qt5 with Homebrew and it still doesn't work,")
+        message (STATUS "try:   export PATH=/usr/local/opt/qt5/bin:$PATH")
+    endif ()
 endif ()
 
 # end Qt setup
@@ -363,7 +286,7 @@ if (USE_FIELD3D)
     else ()
         find_library (HDF5_LIBRARIES
                       NAMES hdf5
-                      PATHS "${THIRD_PARTY_TOOLS_HOME}/lib/"
+                      PATHS
                       /usr/local/lib
                       /opt/local/lib
                      )
@@ -384,15 +307,13 @@ if (USE_FIELD3D AND HDF5_FOUND)
         set (FIELD3D_INCLUDES "${FIELD3D_HOME}/include")
     else ()
         find_path (FIELD3D_INCLUDES Field3D/Field.h
-                   "${THIRD_PARTY_TOOLS}/include"
                    "${PROJECT_SOURCE_DIR}/src/include"
                    "${FIELD3D_HOME}/include"
                   )
     endif ()
     find_library (FIELD3D_LIBRARY
                   NAMES Field3D
-                  PATHS "${THIRD_PARTY_TOOLS_HOME}/lib/"
-                        "${FIELD3D_HOME}/lib"
+                  PATHS "${FIELD3D_HOME}/lib"
                  )
     if (FIELD3D_INCLUDES AND FIELD3D_LIBRARY)
         set (FIELD3D_FOUND TRUE)
@@ -499,14 +420,11 @@ if (NOT WEBP_FIND_QUIETLY)
     message (STATUS "WEBP_HOME=${WEBP_HOME}")
 endif ()
 find_path (WEBP_INCLUDE_DIR webp/encode.h
-           "${THIRD_PARTY_TOOLS}/include"
            "${PROJECT_SOURCE_DIR}/src/include"
            "${WEBP_HOME}")
 find_library (WEBP_LIBRARY
               NAMES webp
-              PATHS "${THIRD_PARTY_TOOLS_HOME}/lib/"
-              "${WEBP_HOME}"
-             )
+              PATHS "${WEBP_HOME}")
 if (WEBP_INCLUDE_DIR AND WEBP_LIBRARY)
     set (WEBP_FOUND TRUE)
     if (NOT WEBP_FIND_QUIETLY)
@@ -540,7 +458,11 @@ if (USE_OPENCV)
     find_package (OpenCV)
     if (OpenCV_FOUND)
         add_definitions ("-DUSE_OPENCV")
+    else ()
+        message (STATUS "OpenCV library not found")
     endif ()
+else ()
+    message (STATUS "Not using OpenCV")
 endif ()
 
 # end OpenCV setup
@@ -611,5 +533,18 @@ if (USE_PTEX)
     endif ()
 endif()
 # end PTEX setup
+###########################################################################
+
+
+###########################################################################
+# DCMTK
+if (USE_DICOM)
+    find_package (DCMTK)
+    if (NOT DCMTK_FOUND)
+        set (DCMTK_INCLUDE_DIR "")
+        set (DCMTK_LIBRARIES "")
+    endif ()
+endif()
+# end DCMTK setup
 ###########################################################################
 

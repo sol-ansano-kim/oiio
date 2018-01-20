@@ -30,13 +30,13 @@
 
 #include <fstream>
 
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/imageio.h"
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/imageio.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
 
-class PNMOutput : public ImageOutput {
+class PNMOutput final : public ImageOutput {
 public:
     virtual ~PNMOutput ();
     virtual const char * format_name (void) const { return "pnm"; }

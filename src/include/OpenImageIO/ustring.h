@@ -133,11 +133,11 @@
 #include <string>
 #include <iostream>
 #include <cstring>
-#include "export.h"
-#include "strutil.h"
-#include "string_view.h"
-#include "dassert.h"
-#include "oiioversion.h"
+#include <OpenImageIO/export.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/string_view.h>
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/oiioversion.h>
 
 #ifndef NULL
 #define NULL 0
@@ -625,13 +625,12 @@ public:
     /// Construct a ustring in a printf-like fashion.  In other words,
     /// something like:
     ///    ustring s = ustring::format ("blah %d %g", (int)foo, (float)bar);
-    ///
-    /// The printf argument list is fully typesafe via tinyformat; format
-    /// conceptually has the signature
-    ///
-    /// static ustring format (const char *fmt, ...);
-    TINYFORMAT_WRAP_FORMAT (static ustring, format, /**/,
-        std::ostringstream msg;, msg, return ustring(msg.str());)
+    /// The argument list is fully typesafe.
+    template<typename... Args>
+    static ustring format (string_view fmt, const Args&... args)
+    {
+        return ustring (Strutil::format (fmt, args...));
+    }
 
     /// Generic stream output of a ustring.
     ///

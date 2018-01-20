@@ -27,8 +27,8 @@
 
   (This is the Modified BSD License)
 */
-#include "OpenImageIO/color.h"
-#include "OpenImageIO/imagebufalgo.h"
+#include <OpenImageIO/color.h>
+#include <OpenImageIO/imagebufalgo.h>
 #include "py_oiio.h"
 
 
@@ -239,6 +239,16 @@ IBA_deep_merge (ImageBuf &dst, const ImageBuf &A, const ImageBuf &B,
 {
     ScopedGILRelease gil;
     return ImageBufAlgo::deep_merge (dst, A, B, occlusion_cull, roi, nthreads);
+}
+
+
+
+bool
+IBA_deep_holdout (ImageBuf &dst, const ImageBuf &src, const ImageBuf &holdout,
+                  ROI roi, int nthreads)
+{
+    ScopedGILRelease gil;
+    return ImageBufAlgo::deep_holdout (dst, src, holdout, roi, nthreads);
 }
 
 
@@ -680,6 +690,43 @@ IBA_channel_sum (ImageBuf &dst, const ImageBuf &src,
 }
 
 
+bool
+IBA_color_map_values (ImageBuf &dst, const ImageBuf &src, int srcchannel,
+                      int nknots, int channels, tuple knots_tuple,
+                      ROI roi=ROI::All(), int nthreads=0)
+{
+    std::vector<float> knots;
+    py_to_stdvector (knots, knots_tuple);
+    if (! src.initialized()) {
+        dst.error ("Uninitialized source image for color_map");
+        return false;
+    }
+    if (! knots.size()) {
+        dst.error ("No knot values supplied");
+        return false;
+    }
+    ScopedGILRelease gil;
+    return ImageBufAlgo::color_map (dst, src, srcchannel, nknots, channels,
+                                    knots, roi, nthreads);
+}
+
+
+bool
+IBA_color_map_name (ImageBuf &dst, const ImageBuf &src, int srcchannel,
+                    const std::string& mapname,
+                    ROI roi=ROI::All(), int nthreads=0)
+{
+    if (! src.initialized()) {
+        dst.error ("Uninitialized source image for color_map");
+        return false;
+    }
+    ScopedGILRelease gil;
+    return ImageBufAlgo::color_map (dst, src, srcchannel, mapname,
+                                    roi, nthreads);
+}
+
+
+
 bool IBA_rangeexpand (ImageBuf &dst, const ImageBuf &src,
                       bool useluma = false,
                       ROI roi = ROI::All(), int nthreads=0)
@@ -975,8 +1022,8 @@ IBA_colorconvert (ImageBuf &dst, const ImageBuf &src,
                   ROI roi = ROI::All(), int nthreads = 0)
 {
     ScopedGILRelease gil;
-    return ImageBufAlgo::colorconvert (dst, src, from, to,
-                                       unpremult, NULL, roi, nthreads);
+    return ImageBufAlgo::colorconvert (dst, src, from, to, unpremult,
+                                       "", "", nullptr, roi, nthreads);
 }
 
 
@@ -1208,14 +1255,41 @@ bool
 IBA_render_text (ImageBuf &dst, int x, int y,
                  const std::string &text,
                  int fontsize=16, const std::string &fontname="",
-                 tuple textcolor_ = tuple())
+                 tuple textcolor_ = tuple(),
+                 const std::string ax = "left",
+                 const std::string ay = "baseline",
+                 int shadow = 0, ROI roi = ROI::All(), int nthreads = 0)
 {
     std::vector<float> textcolor;
     py_to_stdvector (textcolor, textcolor_);
     textcolor.resize (dst.nchannels(), 1.0f);
     ScopedGILRelease gil;
+    using ImageBufAlgo::TextAlignX;
+    using ImageBufAlgo::TextAlignY;
+    TextAlignX alignx (TextAlignX::Left);
+    TextAlignY aligny (TextAlignY::Baseline);
+    if (Strutil::iequals(ax, "right") || Strutil::iequals(ax, "r"))
+        alignx = TextAlignX::Right;
+    if (Strutil::iequals(ax, "center") || Strutil::iequals(ax, "c"))
+        alignx = TextAlignX::Center;
+    if (Strutil::iequals(ay, "top") || Strutil::iequals(ay, "t"))
+        aligny = TextAlignY::Top;
+    if (Strutil::iequals(ay, "bottom") || Strutil::iequals(ay, "b"))
+        aligny = TextAlignY::Bottom;
+    if (Strutil::iequals(ay, "center") || Strutil::iequals(ay, "c"))
+        aligny = TextAlignY::Center;
     return ImageBufAlgo::render_text (dst, x, y, text, fontsize, fontname,
-                                      &textcolor[0]);
+                                      textcolor, alignx, aligny, shadow,
+                                      roi, nthreads);
+}
+
+
+ROI
+IBA_text_size (const std::string &text,
+               int fontsize=16, const std::string &fontname="")
+{
+    ScopedGILRelease gil;
+    return ImageBufAlgo::text_size (text, fontsize, fontname);
 }
 
 
@@ -1455,6 +1529,11 @@ void declare_imagebufalgo()
               arg("roi")=ROI::All(), arg("nthreads")=0))
         .staticmethod("deep_merge")
 
+        .def("deep_holdout", IBA_deep_holdout,
+             (arg("dst"), arg("src"), arg("holdout"),
+              arg("roi")=ROI::All(), arg("nthreads")=0))
+        .staticmethod("deep_holdout")
+
         .def("copy", IBA_copy,
              (arg("dst"), arg("src"), arg("convert")=TypeDesc::UNKNOWN,
               arg("roi")=ROI::All(), arg("nthreads")=0))
@@ -1607,6 +1686,15 @@ void declare_imagebufalgo()
              (arg("dst"), arg("src"), arg("weight"),
               arg("roi")=ROI::All(), arg("nthreads")=0))
         .staticmethod("channel_sum")
+
+        .def("color_map", &IBA_color_map_name,
+             (arg("dst"), arg("src"), arg("srcchannel"), arg("mapname"),
+              arg("roi")=ROI::All(), arg("nthreads")=0))
+        .def("color_map", &IBA_color_map_values,
+             (arg("dst"), arg("src"), arg("srcchannel"),
+              arg("nknots"), arg("channels"), arg("knots"),
+              arg("roi")=ROI::All(), arg("nthreads")=0))
+        .staticmethod("color_map")
 
         .def("rangecompress", &IBA_rangecompress,
              (arg("dst"), arg("src"), arg("useluma")=false,
@@ -1871,8 +1959,14 @@ void declare_imagebufalgo()
         .def("render_text", &IBA_render_text,
              (arg("dst"), arg("x"), arg("y"), arg("text"),
               arg("fontsize")=16, arg("fontname")="",
-              arg("textcolor")=tuple()))
+              arg("textcolor")=tuple(), arg("alignx")="left",
+              arg("aligny")="baseline", arg("shadow")=0,
+              arg("roi")=ROI::All(), arg("nthreads")=0))
         .staticmethod("render_text")
+
+        .def("text_size", &IBA_text_size,
+             (arg("text"), arg("fontsize")=16, arg("fontname")=""))
+        .staticmethod("text_size")
 
         // histogram, histogram_draw,
 

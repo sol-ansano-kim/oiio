@@ -31,7 +31,7 @@
 
 #include <iostream>
 
-#include "OpenImageIO/imageio.h"
+#include <OpenImageIO/imageio.h>
 
 #define DEBUG_IPTC_READ  0
 #define DEBUG_IPTC_WRITE 0
@@ -207,17 +207,17 @@ encode_iptc_iim (const ImageSpec &spec, std::vector<char> &iptc)
 {
     iptc.clear ();
     
-    const ImageIOParameter *p;
+    const ParamValue *p;
     for (int i = 0;  iimtag[i].name;  ++i) {
         if ((p = spec.find_attribute (iimtag[i].name))) {
             if (iimtag[i].repeatable) {
                 std::string allvals (*(const char **)p->data());
                 std::vector<std::string> tokens;
                 Strutil::split (allvals, tokens, ";");
-                for (size_t t = 0, e = tokens.size();  t < e;  ++t) {
-                    tokens[t] = Strutil::strip (tokens[t]);
-                    if (tokens[t].size()) {
-                        const char *tok = &tokens[t][0];
+                for (auto& token : tokens) {
+                    token = Strutil::strip (token);
+                    if (token.size()) {
+                        const char *tok = &token[0];
                         encode_iptc_iim_one_tag (iimtag[i].tag, iimtag[i].name,
                                                  p->type(), &tok, iptc);
                     }

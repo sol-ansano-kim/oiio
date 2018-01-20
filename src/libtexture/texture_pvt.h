@@ -36,8 +36,8 @@
 #ifndef OPENIMAGEIO_TEXTURE_PVT_H
 #define OPENIMAGEIO_TEXTURE_PVT_H
 
-#include "OpenImageIO/texture.h"
-#include "OpenImageIO/simd.h"
+#include <OpenImageIO/texture.h>
+#include <OpenImageIO/simd.h>
 
 OIIO_NAMESPACE_BEGIN
 
@@ -147,6 +147,19 @@ public:
                           float dsdy, float dtdy,
                           int nchannels, float *result,
                           float *dresultds=NULL, float *dresultdt=NULL);
+    virtual bool texture (ustring filename, TextureOptBatch &options,
+                          Tex::RunMask mask, const float *s, const float *t,
+                          const float *dsdx, const float *dtdx,
+                          const float *dsdy, const float *dtdy,
+                          int nchannels, float *result,
+                          float *dresultds=nullptr, float *dresultdt=nullptr);
+    virtual bool texture (TextureHandle *texture_handle,
+                          Perthread *thread_info, TextureOptBatch &options,
+                          Tex::RunMask mask, const float *s, const float *t,
+                          const float *dsdx, const float *dtdx,
+                          const float *dsdy, const float *dtdy,
+                          int nchannels, float *result,
+                          float *dresultds=nullptr, float *dresultdt=nullptr);
     virtual bool texture (ustring filename, TextureOptions &options,
                           Runflag *runflags, int beginactive, int endactive,
                           VaryingRef<float> s, VaryingRef<float> t,
@@ -163,7 +176,6 @@ public:
                           int nchannels, float *result,
                           float *dresultds=NULL, float *dresultdt=NULL);
 
-
     virtual bool texture3d (ustring filename, TextureOpt &options,
                             const Imath::V3f &P, const Imath::V3f &dPdx,
                             const Imath::V3f &dPdy, const Imath::V3f &dPdz,
@@ -177,6 +189,21 @@ public:
                             int nchannels, float *result,
                             float *dresultds=NULL, float *dresultdt=NULL,
                             float *dresultdr=NULL);
+    virtual bool texture3d (ustring filename,
+                            TextureOptBatch &options, Tex::RunMask mask,
+                            const float *P, const float *dPdx,
+                            const float *dPdy, const float *dPdz,
+                            int nchannels, float *result,
+                            float *dresultds=nullptr, float *dresultdt=nullptr,
+                            float *dresultdr=nullptr);
+    virtual bool texture3d (TextureHandle *texture_handle,
+                            Perthread *thread_info,
+                            TextureOptBatch &options, Tex::RunMask mask,
+                            const float *P, const float *dPdx,
+                            const float *dPdy, const float *dPdz,
+                            int nchannels, float *result,
+                            float *dresultds=nullptr, float *dresultdt=nullptr,
+                            float *dresultdr=nullptr);
     virtual bool texture3d (ustring filename, TextureOptions &options,
                             Runflag *runflags, int beginactive, int endactive,
                             VaryingRef<Imath::V3f> P,
@@ -210,6 +237,18 @@ public:
                          float *dresultds=NULL, float *dresultdt=NULL) {
         return false;
     }
+    virtual bool shadow (ustring filename,
+                         TextureOptBatch &options, Tex::RunMask mask,
+                         const float *P, const float *dPdx, const float *dPdy,
+                         float *result, float *dresultds=nullptr, float *dresultdt=nullptr) {
+        return false;
+    }
+    virtual bool shadow (TextureHandle *texture_handle, Perthread *thread_info,
+                         TextureOptBatch &options, Tex::RunMask mask,
+                         const float *P, const float *dPdx, const float *dPdy,
+                         float *result, float *dresultds=nullptr, float *dresultdt=nullptr) {
+        return false;
+    }
     virtual bool shadow (ustring filename, TextureOptions &options,
                          Runflag *runflags, int beginactive, int endactive,
                          VaryingRef<Imath::V3f> P,
@@ -240,6 +279,16 @@ public:
                               const Imath::V3f &R, const Imath::V3f &dRdx,
                               const Imath::V3f &dRdy, int nchannels, float *result,
                               float *dresultds=NULL, float *dresultdt=NULL);
+    virtual bool environment (ustring filename,
+                              TextureOptBatch &options, Tex::RunMask mask,
+                              const float *R, const float *dRdx, const float *dRdy,
+                              int nchannels, float *result,
+                              float *dresultds=nullptr, float *dresultdt=nullptr);
+    virtual bool environment (TextureHandle *texture_handle, Perthread *thread_info,
+                              TextureOptBatch &options, Tex::RunMask mask,
+                              const float *R, const float *dRdx, const float *dRdy,
+                              int nchannels, float *result,
+                              float *dresultds=nullptr, float *dresultdt=nullptr);
     virtual bool environment (ustring filename, TextureOptions &options,
                               Runflag *runflags, int beginactive, int endactive,
                               VaryingRef<Imath::V3f> R,
@@ -400,26 +449,26 @@ private:
                           int level, TextureFile &texturefile,
                           PerThreadInfo *thread_info, TextureOpt &options,
                           int nchannels_result, int actualchannels,
-                          const float *weight, simd::float4 *accum,
-                          simd::float4 *daccumds, simd::float4 *daccumdt);
+                          const float *weight, simd::vfloat4 *accum,
+                          simd::vfloat4 *daccumds, simd::vfloat4 *daccumdt);
     bool sample_closest  (int nsamples, const float *s, const float *t,
                           int level, TextureFile &texturefile,
                           PerThreadInfo *thread_info, TextureOpt &options,
                           int nchannels_result, int actualchannels,
-                          const float *weight, simd::float4 *accum,
-                          simd::float4 *daccumds, simd::float4 *daccumdt);
+                          const float *weight, simd::vfloat4 *accum,
+                          simd::vfloat4 *daccumds, simd::vfloat4 *daccumdt);
     bool sample_bilinear (int nsamples, const float *s, const float *t,
                           int level, TextureFile &texturefile,
                           PerThreadInfo *thread_info, TextureOpt &options,
                           int nchannels_result, int actualchannels,
-                          const float *weight, simd::float4 *accum,
-                          simd::float4 *daccumds, simd::float4 *daccumdt);
+                          const float *weight, simd::vfloat4 *accum,
+                          simd::vfloat4 *daccumds, simd::vfloat4 *daccumdt);
     bool sample_bicubic  (int nsamples, const float *s, const float *t,
                           int level, TextureFile &texturefile,
                           PerThreadInfo *thread_info, TextureOpt &options,
                           int nchannels_result, int actualchannels,
-                          const float *weight, simd::float4 *accum,
-                          simd::float4 *daccumds, simd::float4 *daccumdt);
+                          const float *weight, simd::vfloat4 *accum,
+                          simd::vfloat4 *daccumds, simd::vfloat4 *daccumdt);
 
     // Define a prototype of a member function pointer for texture3d
     // lookups.
@@ -513,10 +562,10 @@ private:
     void unit_test_texture ();
 
     /// Internal error reporting routine, with printf-like arguments.
-    ///
-    /// void error (const char *message, ...) const
-    TINYFORMAT_WRAP_FORMAT (void, error, const,
-        std::ostringstream msg;, msg, append_error(msg.str());)
+    template<typename... Args>
+    void error (string_view fmt, const Args&... args) const {
+        append_error(Strutil::format (fmt, args...));
+    }
 
     /// Append a string to the current error message
     void append_error (const std::string& message) const;

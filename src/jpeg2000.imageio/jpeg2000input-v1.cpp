@@ -30,10 +30,10 @@
 #include <cstdio>
 #include <vector>
 #include <openjpeg.h>
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/imagebuf.h"
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/imagebuf.h>
 
 
 
@@ -81,7 +81,7 @@ associateAlpha (T * data, int size, int channels, int alpha_channel, float gamma
 }  // namespace
 
 
-class Jpeg2000Input : public ImageInput {
+class Jpeg2000Input final : public ImageInput {
  public:
     Jpeg2000Input () { init (); }
     virtual ~Jpeg2000Input () { close (); }

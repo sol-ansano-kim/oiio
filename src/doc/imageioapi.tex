@@ -119,6 +119,8 @@ be {\cf SEMANTICS}.}
   4-byte encoding of an SMPTE timecode. \\
 {\cf KEYCODE} & indicates an {\cf int[7]} representing the standard
   28-byte encoding of an SMPTE keycode. \\
+{\cf RATIONAL} & indicates an {\cf int[2]} representing a rational
+  number {\cf val[0] / val[1]}. \\
 \end{tabular}
 \medskip
 
@@ -147,6 +149,31 @@ each of which is comprised of 3 floats.
 Of these, the only ones commonly used to store pixel values in image files
 are scalars of {\cf UINT8}, {\cf UINT16}, {\cf FLOAT}, and {\cf HALF}
 (the last only used by OpenEXR, to the best of our knowledge).
+
+A number of {\cf static constexpr TypeDesc} aliases for common types exist
+in the outer {\cf OpenImageIO} scope:
+
+\begin{quote}
+{\cf
+TypeUnknown
+TypeFloat
+TypeColor
+TypePoint
+TypeVector
+TypeNormal \\
+TypeMatrix33
+TypeMatrix44
+TypeMatrix
+TypeHalf
+TypeInt
+TypeUInt \\
+TypeString
+TypeTimeCode
+TypeKeyCode
+TypeFloat4
+TypeRational
+}
+\end{quote}
 
 Note that the \TypeDesc (which is also used for applications other
 than images) can describe many types not used by
@@ -485,6 +512,13 @@ beyond that they are named ``channel \emph{n}''), the fourth channel (if
 it exists) is assumed to be alpha, and values are assumed to be linear.
 \apiend
 
+\apiitem{{\ce ImageSpec} (const ROI \&roi, TypeDesc fmt = TypeDesc::UINT8)}
+\NEW % 1.8
+Constructs an \ImageSpec whose dimensions (both data and ``full'') and
+number of channels are given by the \ROI (\ref{sec:ROI}), pixel data type
+by {\cf fmt}, and other fields are set to their default values.
+\apiend
+
 \apiitem{void {\ce set_format} (TypeDesc fmt)}
 Sets the format as described, and clears any per-channel format information
 in {\cf channelformats}.
@@ -573,6 +607,13 @@ be represented by a {\cf size_t} on that platform.  If this returns
 storage!
 \apiend
 
+\apiitem{int {\ce channelindex} (string_view name) const}
+\NEW % 1.8
+Returns the index of the channel with the given name, or -1 if no such
+channel is present in {\cf channelnames}.
+\apiend
+
+
 % FIXME - document auto_stride() ?
 
 \apiitem{void {\ce attribute} (string_view name, TypeDesc type, \\
@@ -594,18 +635,18 @@ floating-point value, or string.
 \bigspc\bigspc                   TypeDesc searchtype=UNKNOWN,\\
 \bigspc\bigspc                   bool casesensitive=false)}
 
-Searches {\cf extra_attribs} for an attribute matching {\cf name},
-and if it exists, remove it entirely from {\cf extra_attribs}.
+Searches {\cf extra_attribs} for any attributes matching {\cf name} (as
+a regular expression), removing them entirely from {\cf extra_attribs}.
 If {\cf searchtype} is anything other than {\cf TypeDesc::UNKNOWN},
 matches will be restricted only to attributes with the given type.
-The name comparison will be exact if {\cf casesensitive} is true, otherwise
+The name comparison will be case-sensitive if {\cf casesensitive} is true, otherwise
 in a case-insensitive manner if {\cf caseinsensitive} is false.
 \apiend
 
-\apiitem{ImageIOParameter * {\ce find_attribute} (string_view name,\\
+\apiitem{ParamValue * {\ce find_attribute} (string_view name,\\
 \bigspc\bigspc\bigspc                        TypeDesc searchtype=UNKNOWN,\\
 \bigspc\bigspc\bigspc                        bool casesensitive=false)\\
-const ImageIOParameter * {\ce find_attribute} (string_view name,\\
+const ParamValue * {\ce find_attribute} (string_view name,\\
 \bigspc\bigspc\bigspc\spc                     TypeDesc searchtype=UNKNOWN,\\
 \bigspc\bigspc\bigspc\spc                     bool casesensitive=false) const}
 
@@ -617,12 +658,12 @@ The name comparison will be exact if {\cf casesensitive} is true, otherwise
 in a case-insensitive manner if {\cf caseinsensitive} is false.
 \apiend
 
-\apiitem{const ImageIOParameter * {\ce find_attribute} (string_view name,\\
-\bigspc\bigspc\bigspc\spc                     ImageIOParameter \&tmpparam,\\
+\apiitem{const ParamValue * {\ce find_attribute} (string_view name,\\
+\bigspc\bigspc\bigspc\spc                     ParamValue \&tmpparam,\\
 \bigspc\bigspc\bigspc\spc                     TypeDesc searchtype=UNKNOWN,\\
 \bigspc\bigspc\bigspc\spc                     bool casesensitive=false) const}
 Search for the named attribute and return the pointer to its
-{\cf ImageIOParameter} record, or {\cf NULL} if not found.  This variety of
+{\cf ParamValue} record, or {\cf NULL} if not found.  This variety of
 {\cf find_attribute(}) can retrieve items such as \qkw{width}, which are
 part of the \ImageSpec, but not in {\cf extra_attribs}. The {\cf tmpparam}
 is a temporary storage area owned by the caller, which is used as temporary
@@ -653,7 +694,7 @@ function for when you know you are just looking for a simple string value.
 \apiend
 
 
-\apiitem{static std::string {\ce metadata_val} (const ImageIOParamaeter \&p,
+\apiitem{static std::string {\ce metadata_val} (const ParamValue \&p,
   bool human=true) const}
 For a given parameter {\cf p}, format the value nicely as a string.
 If {\cf human} is true, use
@@ -661,6 +702,19 @@ especially human-readable explanations (units, or decoding of
 values) for certain known metadata.
 \apiend
 
+
+\apiitem{std::string {\ce serialize} (SerialFormat format, SerialVerbose verbose) const}
+\NEW % 1.8
+Returns, as a string, a serialized version of the \ImageSpec.
+The {\cf format} may be either {\cf ImageSpec::SerialText} or
+{\cf ImageSpec::SerialXML}.
+The {\cf verbose} argument may be one of: {\cf ImageSpec::SerialBrief} (just
+resolution and other vital statistics, one line for {\cf SerialText},
+{\cf ImageSpec::SerialDetailed} (contains all metadata in orginal form), or
+{\cf ImageSpec::SerialDetailedHuman} (contains all metadata, in many cases
+with human-readable explanation).
+
+\apiend
 
 \apiitem{std::string {\ce to_xml} () const}
 Saves the contents of the \ImageSpec as XML, returning it as a string.
@@ -723,7 +777,6 @@ Retrieve the number of channels.
 \apiend
 
 \apiitem{string_view {\ce channelname} (int c) const}
-\NEW % 1.7
 Retrieve the name of channel {\cf c}.
 \apiend
 
@@ -748,14 +801,12 @@ Set the number of samples for the given pixel index.
 \apiend
 
 \apiitem{void {\ce insert_samples} (int pixel, int samplepos, int n=1)}
-\NEW % 1.7
 Insert {\cf n} samples of the specified pixel, betinning at the sample
 position index. After insertion, the new samples will have uninitialized
 values.
 \apiend
 
 \apiitem{void {\ce erase_samples} (int pixel, int samplepos, int n=1)}
-\NEW % 1.7
 Remove {\cf n} samples of the specified pixel, betinning at the sample
 position index.
 \apiend
@@ -774,32 +825,28 @@ floating point or unsigned integer channel types, respectively.
 
 \apiitem{bool {\ce copy_deep_sample} (int pixel, int sample, \\
     \bigspc const DeepData \&src, int srcpixel, int srcsample)}
-\NEW % 1.7
 Copy a deep sample from {\cf src} to this \DeepData. They must have the same
 channel layout. Return {\cf true} if ok, {\cf false} if the operation could
 not be performed.
 \apiend
 
 \apiitem{bool {\ce copy_deep_pixel} (int pixel, const DeepData \&src, int srcpixel)}
-\NEW % 1.7
 Copy an entire deep pixel from {\cf src} to this \DeepData, completely
 replacing any pixel data for that pixel. They must have the same channel
 layout. Return {\cf true} if ok, {\cf false} if the operation could not be
 performed.
 \apiend
 
-\apiitem{void {\ce split} (int pixel, float depth)}
-\NEW % 1.7
-Split any samples of the pixel that cross {\cf depth}.
+\apiitem{bool {\ce split} (int pixel, float depth)}
+Split any samples of the pixel that cross {\cf depth}. Return {\cf true} if
+any splits occurred, {\cf false} if the pixel was unmodified.
 \apiend
 
 \apiitem{void {\ce sort} (int pixel)}
-\NEW % 1.7
 Sort the samples of the pixel by their Z depth.
 \apiend
 
 \apiitem{void {\ce merge_overlaps} (int pixel)}
-\NEW % 1.7
 Merge any adjacent samples in the pixel that exactly overlap in $z$
 range. This is only useful if the pixel has previously been split at
 all sample starts and ends, and sorted by depth. Note that this may change
@@ -807,17 +854,20 @@ the number of samples in the pixel.
 \apiend
 
 \apiitem{bool {\ce merge_deep_pixels} (int pixel, const DeepData \&src, int srcpixel)}
-\NEW % 1.7
 Merge the samples of {\cf src}'s pixel into this \DeepData's pixel.
 Return {\cf true} if ok, {\cf false} if the operation could not be
 performed.
 \apiend
 
 \apiitem{bool {\ce occlusion_cull} (int pixel)}
-\NEW % 1.7
 Eliminate any samples beyond an opaque sample.
 \apiend
 
+\apiitem{float {\ce opaque_z} (int pixel)}
+\NEW % 1.8
+For the given pixel index. return the $z$ value at which the pixel reaches
+full opacity.
+\apiend
 
 
 \section{Miscellaneous Utilities}
@@ -863,7 +913,7 @@ containing the new value for the attribute.
 If the name is known, valid attribute that matches the type specified,
 the attribute will be set to the new value and {\cf attribute()} will
 return {\cf true}.  If {\cf name} is not recognized, or if the types do
-not match (e.g., {\cf type} is {\cf TypeDesc::TypeFloat} but the named
+not match (e.g., {\cf type} is {\cf TypeFloat} but the named
 attribute is a string), the attribute will not be modified, and {\cf
   attribute()} will return {\cf false}.
 
@@ -906,11 +956,14 @@ A colon-separated list of directories to search for
 dynamically-loaded format plugins.
 \apiend
 
-\apiitem{string format_list}
+\apiitem{string format_list \\
+string input_format_list \\
+string output_format_list}
 \vspace{10pt}
-\index{format_list}
-A comma-separated list of all the names of all supported 
-image format readers and writers.  (Note: can only be retrieved
+\index{format_list} \index{input_format_list} \index{output_format_list}
+A comma-separated list of all the names of, respectively, all supported
+image formats, all formats accepted as inputs, and all formats accepted
+as outputs.  (Note: can only be retrieved
 by {\cf getattribute()}, cannot be set by {\cf attribute()}.)
 \apiend
 
@@ -931,7 +984,6 @@ by {\cf getattribute()}, cannot be set by {\cf attribute()}.)
 \apiitem{string library_list}
 \vspace{10pt}
 \index{library_list}
-\NEW   % 1.7
 For each format that uses a dependent library, the format name, followed by
 a colon, followed by the name and version of the dependency. Semicolons
 separate the lists for formats.  For example,
@@ -976,7 +1028,7 @@ If the attribute name is valid and matches the type specified, the
 attribute value will be stored at address {\cf val} and {\cf
   attribute()} will return {\cf true}.  If {\cf name} is not recognized
 as a valid attribute name, or if the types do not match (e.g., {\cf
-  type} is {\cf TypeDesc::TypeFloat} but the named attribute is a
+  type} is {\cf TypeFloat} but the named attribute is a
 string), no data will be written to {\cf val}, and {\cf attribute()}
 will return {\cf false}.
 
@@ -1008,7 +1060,6 @@ string_view {\ce get_string_attribute} (string_view name, \\
 \bigspc\bigspc\bigspc  string_view defaultvalue="")}
 \indexapi{get_int_attribute} \indexapi{get_float_attribute}
 \indexapi{get_string_attribute}
-\NEW % 1.7
 Specialized versions of {\cf getattribute()} for common types, in which the
 data is returned directly, and a supplied default value is returned if the
 attribute was not found.

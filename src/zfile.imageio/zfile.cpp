@@ -34,13 +34,13 @@
 
 #include "zlib.h"
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/typedesc.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/typedesc.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/thread.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
@@ -62,7 +62,7 @@ static const int zfile_magic_endian = 0xab67082f;  // other endianness
 
 
 
-class ZfileInput : public ImageInput {
+class ZfileInput final : public ImageInput {
 public:
     ZfileInput () { init(); }
     virtual ~ZfileInput () { close(); }
@@ -88,7 +88,7 @@ private:
 
 
 
-class ZfileOutput : public ImageOutput {
+class ZfileOutput final : public ImageOutput {
 public:
     ZfileOutput () { init(); }
     virtual ~ZfileOutput () { close(); }
@@ -194,14 +194,14 @@ ZfileInput::open (const std::string &name, ImageSpec &newspec)
 
     m_spec = ImageSpec (header.width, header.height, 1, TypeDesc::FLOAT);
     if (m_spec.channelnames.size() == 0)
-        m_spec.channelnames.push_back ("z");
+        m_spec.channelnames.emplace_back("z");
     else
         m_spec.channelnames[0] = "z";
     m_spec.z_channel = 0;
 
-    m_spec.attribute ("worldtoscreen", TypeDesc::TypeMatrix,
+    m_spec.attribute ("worldtoscreen", TypeMatrix,
                       (float *)&header.worldtoscreen);
-    m_spec.attribute ("worldtocamera", TypeDesc::TypeMatrix,
+    m_spec.attribute ("worldtocamera", TypeMatrix,
                       (float *)&header.worldtocamera);
 
     newspec = spec ();
@@ -292,13 +292,13 @@ ZfileOutput::open (const std::string &name, const ImageSpec &userspec,
     header.width = (int)m_spec.width;
     header.height = (int)m_spec.height;
 
-    ImageIOParameter *p;
+    ParamValue *p;
     static float ident[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-    if ((p = m_spec.find_attribute ("worldtocamera", TypeDesc::TypeMatrix)))
+    if ((p = m_spec.find_attribute ("worldtocamera", TypeMatrix)))
         memcpy (header.worldtocamera, p->data(), 16*sizeof(float));
     else
         memcpy (header.worldtocamera, ident, 16*sizeof(float));
-    if ((p = m_spec.find_attribute ("worldtoscreen", TypeDesc::TypeMatrix)))
+    if ((p = m_spec.find_attribute ("worldtoscreen", TypeMatrix)))
         memcpy (header.worldtoscreen, p->data(), 16*sizeof(float));
     else
         memcpy (header.worldtoscreen, ident, 16*sizeof(float));

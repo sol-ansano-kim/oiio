@@ -32,14 +32,12 @@
 #include <cstdlib>
 #include <cmath>
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/filesystem.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/thread.h>
+#include <OpenImageIO/filesystem.h>
 
 #include <OpenEXR/ImathVec.h>
-
-#include <boost/foreach.hpp>
 
 #include "field3d_pvt.h"
 using namespace OIIO_NAMESPACE::f3dpvt;
@@ -178,7 +176,7 @@ read_metadata (const M &meta, ImageSpec &spec)
     }
     for (typename M::VecFloatMetadata::const_iterator i = meta.vecFloatMetadata().begin(),
              e = meta.vecFloatMetadata().end(); i != e;  ++i) {
-        spec.attribute (i->first, TypeDesc::TypeVector, &(i->second));
+        spec.attribute (i->first, TypeVector, &(i->second));
     }
 }
 
@@ -279,7 +277,7 @@ Field3DInput::read_one_layer (FieldRes::Ptr field, layerrecord &lay,
                        (float)md[2][0], (float)md[2][1], (float)md[2][2], (float)md[2][3],
                        (float)md[3][0], (float)md[3][1], (float)md[3][2], (float)md[3][3]);
         m = m.inverse();
-        lay.spec.attribute ("worldtocamera", TypeDesc::TypeMatrix, &m);
+        lay.spec.attribute ("worldtocamera", TypeMatrix, &m);
     }
 
     // Other metadata

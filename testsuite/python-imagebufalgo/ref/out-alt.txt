@@ -50,27 +50,27 @@ Comparing "cut.tif" and "../../../../testsuite/oiiotool/ref/cut.tif"
 PASS
 Comparing "pasted.tif" and "../../../../testsuite/oiiotool/ref/pasted.tif"
 PASS
-Comparing "rotate90.tif" and "../../../../testsuite/oiiotool/ref/rotate90.tif"
+Comparing "rotate90.tif" and "../../../../testsuite/oiiotool-xform/ref/rotate90.tif"
 PASS
 Comparing "rotate180.tif" and "../../../../testsuite/oiiotool/ref/rotate180.tif"
 PASS
-Comparing "rotate270.tif" and "../../../../testsuite/oiiotool/ref/rotate270.tif"
+Comparing "rotate270.tif" and "../../../../testsuite/oiiotool-xform/ref/rotate270.tif"
 PASS
-Comparing "rotated.tif" and "../../../../testsuite/oiiotool/ref/rotated.tif"
+Comparing "rotated.tif" and "../../../../testsuite/oiiotool-xform/ref/rotated.tif"
 PASS
-Comparing "rotated-offcenter.tif" and "../../../../testsuite/oiiotool/ref/rotated-offcenter.tif"
+Comparing "rotated-offcenter.tif" and "../../../../testsuite/oiiotool-xform/ref/rotated-offcenter.tif"
 PASS
-Comparing "warped.tif" and "../../../../testsuite/oiiotool/ref/warped.tif"
+Comparing "warped.tif" and "../../../../testsuite/oiiotool-xform/ref/warped.tif"
 PASS
-Comparing "flip.tif" and "../../../../testsuite/oiiotool/ref/flip.tif"
+Comparing "flip.tif" and "../../../../testsuite/oiiotool-xform/ref/flip.tif"
 PASS
-Comparing "flop.tif" and "../../../../testsuite/oiiotool/ref/flop.tif"
+Comparing "flop.tif" and "../../../../testsuite/oiiotool-xform/ref/flop.tif"
 PASS
-Comparing "reorient1.tif" and "../../../../testsuite/oiiotool/ref/reorient1.tif"
+Comparing "reorient1.tif" and "../../../../testsuite/oiiotool-xform/ref/reorient1.tif"
 PASS
-Comparing "transpose.tif" and "../../../../testsuite/oiiotool/ref/transpose.tif"
+Comparing "transpose.tif" and "../../../../testsuite/oiiotool-xform/ref/transpose.tif"
 PASS
-Comparing "cshift.tif" and "../../../../testsuite/oiiotool/ref/cshift.tif"
+Comparing "cshift.tif" and "../../../../testsuite/oiiotool-xform/ref/cshift.tif"
 PASS
 Comparing "cadd1.exr" and "../../../../testsuite/oiiotool/ref/cadd1.exr"
 PASS
@@ -106,15 +106,19 @@ Comparing "invert.tif" and "../../../../testsuite/oiiotool/ref/invert.tif"
 PASS
 Comparing "chsum.tif" and "../../../../testsuite/oiiotool/ref/chsum.tif"
 PASS
+Comparing "colormap-spectrum.tif" and "../../../../testsuite/oiiotool/ref/colormap-spectrum.tif"
+PASS
+Comparing "colormap-custom.tif" and "../../../../testsuite/oiiotool/ref/colormap-custom.tif"
+PASS
 Comparing "grid-clamped.tif" and "../../../../testsuite/oiiotool/ref/grid-clamped.tif"
 PASS
 Comparing "rangecompress.tif" and "../../../../testsuite/oiiotool/ref/rangecompress.tif"
 PASS
 Comparing "rangeexpand.tif" and "../../../../testsuite/oiiotool/ref/rangeexpand.tif"
 PASS
-Comparing "resize.tif" and "../../../../testsuite/oiiotool/ref/resize.tif"
+Comparing "resize.tif" and "../../../../testsuite/oiiotool-xform/ref/resize.tif"
 PASS
-Comparing "resample.tif" and "../../../../testsuite/oiiotool/ref/resample.tif"
+Comparing "resample.tif" and "../../../../testsuite/oiiotool-xform/ref/resample.tif"
 PASS
 Comparing "bsplinekernel.exr" and "../../../../testsuite/oiiotool/ref/bsplinekernel.exr"
 PASS
@@ -148,5 +152,5 @@ Comparing "a_over_b.exr" and "../../../../testsuite/oiiotool-composite/ref/a_ove
 PASS
 Comparing "tahoe-small.tx" and "ref/tahoe-small.tx"
 PASS
-Comparing "text.tif" and "../../../../testsuite/oiiotool-text/ref/text-freetype2.7.tif"
+Comparing "text.tif" and "../../../../testsuite/oiiotool-text/ref/text.tif"
 PASS

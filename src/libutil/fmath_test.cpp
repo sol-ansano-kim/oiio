@@ -29,6 +29,7 @@
 */
 
 #include <vector>
+#include <iostream>
 
 #include <OpenEXR/half.h>
 
@@ -39,10 +40,11 @@
 #include <OpenImageIO/unittest.h>
 #include <OpenImageIO/imagebufalgo_util.h>
 #include <OpenImageIO/argparse.h>
+#include <OpenImageIO/benchmark.h>
 
-OIIO_NAMESPACE_USING;
+using namespace OIIO;
 
-static int iterations = 10;
+static int iterations = 1000000;
 static int ntrials = 5;
 static bool verbose = false;
 
@@ -143,6 +145,39 @@ test_int_helpers ()
 
 
 
+void
+test_math_functions ()
+{
+    std::cout << "Testing math functions\n";
+    Benchmarker bench;
+
+    OIIO_CHECK_EQUAL (ifloor(0.0f), 0);
+    OIIO_CHECK_EQUAL (ifloor(-0.999f), -1);
+    OIIO_CHECK_EQUAL (ifloor(-1.0f), -1);
+    OIIO_CHECK_EQUAL (ifloor(-1.001f), -2);
+    OIIO_CHECK_EQUAL (ifloor(0.999f), 0);
+    OIIO_CHECK_EQUAL (ifloor(1.0f), 1);
+    OIIO_CHECK_EQUAL (ifloor(1.001f), 1);
+    float fval = 1.1; clobber(fval);
+    bench ("ifloor", [&](){ return DoNotOptimize(ifloor(fval)); });
+
+    int ival;
+    OIIO_CHECK_EQUAL_APPROX (floorfrac(0.0f,    &ival), 0.0f);   OIIO_CHECK_EQUAL (ival, 0);
+    OIIO_CHECK_EQUAL_APPROX (floorfrac(-0.999f, &ival), 0.001f); OIIO_CHECK_EQUAL (ival, -1);
+    OIIO_CHECK_EQUAL_APPROX (floorfrac(-1.0f,   &ival), 0.0f);   OIIO_CHECK_EQUAL (ival, -1);
+    OIIO_CHECK_EQUAL_APPROX (floorfrac(-1.001f, &ival), 0.999f); OIIO_CHECK_EQUAL (ival, -2);
+    OIIO_CHECK_EQUAL_APPROX (floorfrac(0.999f,  &ival), 0.999f); OIIO_CHECK_EQUAL (ival, 0);
+    OIIO_CHECK_EQUAL_APPROX (floorfrac(1.0f,    &ival), 0.0f);   OIIO_CHECK_EQUAL (ival, 1);
+    OIIO_CHECK_EQUAL_APPROX (floorfrac(1.001f,  &ival), 0.001f); OIIO_CHECK_EQUAL (ival, 1);
+    bench ("floorfrac", [&](float x){ return DoNotOptimize(floorfrac(x,&ival)); }, fval);
+
+    OIIO_CHECK_EQUAL (sign(3.1f), 1.0f);
+    OIIO_CHECK_EQUAL (sign(-3.1f), -1.0f);
+    OIIO_CHECK_EQUAL (sign(0.0f), 0.0f);
+}
+
+
+
 // Convert T to F to T, make sure value are preserved round trip
 template<typename T, typename F>
 void test_convert_type (double tolerance = 1e-6)
@@ -159,7 +194,7 @@ void test_convert_type (double tolerance = 1e-6)
             }
         }
     } else {
-        for (float i = 0.0f; i <= 1.0f;  i += 0.001) {
+        for (float i = 0.0f; i <= 1.0f;  i += 0.001) {   // NOLINT
             T in = (T)i;
             F f = convert_type<T,F> (in);
             T out = convert_type<F,T> (f);
@@ -184,6 +219,7 @@ void do_convert_type (const std::vector<S> &svec, std::vector<D> &dvec)
 template<typename S, typename D>
 void benchmark_convert_type ()
 {
+    const size_t iterations = 10;
     const size_t size = 10000000;
     const S testval(1.0);
     std::vector<S> svec (size, testval);
@@ -191,7 +227,7 @@ void benchmark_convert_type ()
     std::cout << Strutil::format("Benchmark conversion of %6s -> %6s : ",
                                  TypeDesc(BaseTypeFromC<S>::value),
                                  TypeDesc(BaseTypeFromC<D>::value));
-    float time = time_trial (std::bind (do_convert_type<S,D>, OIIO::cref(svec), OIIO::ref(dvec)),
+    float time = time_trial (bind (do_convert_type<S,D>, std::cref(svec), std::ref(dvec)),
                              ntrials, iterations) / iterations;
     std::cout << Strutil::format ("%7.1f Mvals/sec", (size/1.0e6)/time) << std::endl;
     D r = convert_type<S,D>(testval);
@@ -221,9 +257,51 @@ void test_bit_range_convert ()
 
 
 
+static void test_interpolate_linear ()
+{
+    std::cout << "\nTesting interpolate_linear\n";
+
+    // Test simple case of 2 knots
+    float knots2[] = { 1.0f, 2.0f };
+    OIIO_CHECK_EQUAL (interpolate_linear (0.0f, knots2),  1.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (0.25f, knots2), 1.25f);
+    OIIO_CHECK_EQUAL (interpolate_linear (0.0f, knots2),  1.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (1.0f, knots2),  2.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (-0.1f, knots2), 1.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (1.1f, knots2),  2.0f);
+    float inf = std::numeric_limits<float>::infinity();
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    OIIO_CHECK_EQUAL (interpolate_linear (-inf, knots2), 1.0f); // Test -inf
+    OIIO_CHECK_EQUAL (interpolate_linear (inf, knots2), 2.0f); // Test inf
+    OIIO_CHECK_EQUAL (interpolate_linear (nan, knots2), 1.0f); // Test nan
+
+    // More complex case of many knots
+    float knots4[] = { 1.0f, 2.0f, 4.0f, 6.0f };
+    OIIO_CHECK_EQUAL (interpolate_linear (-0.1f, knots4), 1.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (0.0f, knots4), 1.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (1.0f/3.0f, knots4), 2.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (0.5f, knots4), 3.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (5.0f/6.0f, knots4), 5.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (1.0f, knots4), 6.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (1.1f, knots4), 6.0f);
+
+    // Make sure it all works for strided arrays, too
+    float knots4_strided[] = { 1.0f, 0.0f, 2.0f, 0.0f, 4.0f, 0.0f, 6.0f, 0.0f };
+    array_view_strided<const float> a (knots4_strided, 4, 2);
+    OIIO_CHECK_EQUAL (interpolate_linear (-0.1f, a), 1.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (0.0f, a), 1.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (1.0f/3.0f, a), 2.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (0.5f, a), 3.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (5.0f/6.0f, a), 5.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (1.0f, a), 6.0f);
+    OIIO_CHECK_EQUAL (interpolate_linear (1.1f, a), 6.0f);
+}
+
+
+
 int main (int argc, char *argv[])
 {
-#if !defined(NDEBUG) || defined(OIIO_CI) || defined(OIIO_CODECOV)
+#if !defined(NDEBUG) || defined(OIIO_CI) || defined(OIIO_CODE_COVERAGE)
     // For the sake of test time, reduce the default iterations for DEBUG,
     // CI, and code coverage builds. Explicit use of --iters or --trials
     // will override this, since it comes before the getargs() call.
@@ -234,6 +312,8 @@ int main (int argc, char *argv[])
     getargs (argc, argv);
 
     test_int_helpers ();
+
+    test_math_functions ();
 
     std::cout << "\nround trip convert char/float/char\n";
     test_convert_type<char,float> ();
@@ -274,6 +354,8 @@ int main (int argc, char *argv[])
 //    test_convert_type<float,unsigned short> ();
 
     test_bit_range_convert();
+
+    test_interpolate_linear();
 
     return unit_test_failures != 0;
 }

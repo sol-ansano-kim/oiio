@@ -42,26 +42,25 @@
 #endif
 
 // included to remove std::min/std::max errors
-#include "OpenImageIO/platform.h"
+#include <OpenImageIO/platform.h>
 
 #include <vector>
 
-// This needs to be included before GL.h
 #include <glew.h>
-
-#include <QtGui/QAction>
-#include <QtGui/QCheckBox>
-#include <QtGui/QDialog>
-#include <QtGui/QMainWindow>
+#include <QGLWidget>
+#include <QAction>
+#include <QCheckBox>
+#include <QDialog>
+#include <QMainWindow>
 
 #ifndef QT_NO_PRINTER
-#include <QtGui/QPrinter>
+// #include <QPrinter>
 #endif
 
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/imagebuf.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/imagebuf.h>
 
-OIIO_NAMESPACE_USING;
+using namespace OIIO;
 
 class QComboBox;
 class QLabel;
@@ -333,7 +332,7 @@ private:
     IvPreferenceWindow *preferenceWindow;
 
 #ifndef QT_NO_PRINTER
-    QPrinter printer;
+    // QPrinter printer;
 #endif
 
     QAction *openAct, *reloadAct, *closeImgAct;

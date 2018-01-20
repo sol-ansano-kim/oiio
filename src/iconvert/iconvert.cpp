@@ -37,16 +37,14 @@
 #include <vector>
 #include <string>
 
-#include <boost/foreach.hpp>
-
-#include "OpenImageIO/argparse.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/sysutil.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/imagecache.h"
+#include <OpenImageIO/argparse.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/sysutil.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/imagecache.h>
 
 
-OIIO_NAMESPACE_USING;
+using namespace OIIO;
 
 
 static std::string uninitialized = "uninitialized \001 HHRU dfvAS: efjl";
@@ -81,7 +79,7 @@ static int
 parse_files (int argc, const char *argv[])
 {
     for (int i = 0;  i < argc;  i++)
-        filenames.push_back (argv[i]);
+        filenames.emplace_back(argv[i]);
     return 0;
 }
 
@@ -299,12 +297,12 @@ adjust_spec (ImageInput *in, ImageOutput *out,
         std::vector<std::string> oldkwlist;
         if (! oldkw.empty()) {
             Strutil::split (oldkw, oldkwlist, ";");
-            for (size_t i = 0; i < oldkwlist.size(); ++i)
-                oldkwlist[i] = Strutil::strip (oldkwlist[i]);
+            for (auto & kw : oldkwlist)
+                kw = Strutil::strip (kw);
         }
-        BOOST_FOREACH (const std::string &nk, keywords) {
+        for (auto&& nk : keywords) {
             bool dup = false;
-            BOOST_FOREACH (const std::string &ok, oldkwlist)
+            for (auto&& ok : oldkwlist)
                 dup |= (ok == nk);
             if (! dup)
                 oldkwlist.push_back (nk);
@@ -370,7 +368,7 @@ convert_file (const std::string &in_filename, const std::string &out_filename)
         int nsubimages = 0;
         ustring ufilename (in_filename);
         imagecache->get_image_info (ufilename, 0, 0, ustring("subimages"),
-                                    TypeDesc::TypeInt, &nsubimages);
+                                    TypeInt, &nsubimages);
         if (nsubimages > 1) {
             subimagespecs.resize (nsubimages);
             for (int i = 0;  i < nsubimages;  ++i) {
@@ -513,7 +511,7 @@ main (int argc, char *argv[])
     bool ok = true;
 
     if (inplace) {
-        BOOST_FOREACH (const std::string &s, filenames)
+        for (auto&& s : filenames)
             ok &= convert_file (s, s);
     } else {
         ok = convert_file (filenames[0], filenames[1]);

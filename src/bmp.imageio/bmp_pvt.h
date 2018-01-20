@@ -31,9 +31,9 @@
 #define OPENIMAGEIO_BMP_H
 
 #include <cstdio>
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
@@ -141,7 +141,7 @@ namespace bmp_pvt {
 
 
 
-class BmpInput : public ImageInput {
+class BmpInput final : public ImageInput {
  public:
     BmpInput () { init (); }
     virtual ~BmpInput () { close (); }
@@ -172,7 +172,7 @@ class BmpInput : public ImageInput {
 
 
 
-class BmpOutput : public ImageOutput {
+class BmpOutput final : public ImageOutput {
  public:
     BmpOutput () { init (); }
     virtual ~BmpOutput () { close (); }

@@ -28,7 +28,7 @@
   (This is the Modified BSD License)
 */
 
-#include "oiioversion.h"
+#include <OpenImageIO/oiioversion.h>
 #include "fits_pvt.h"
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -217,8 +217,8 @@ FitsOutput::create_fits_header (void)
         std::vector<std::string> values;
         if (keyname == "Comment" || keyname == "History" || keyname == "Hierarch") {
             Strutil::split (value, values, m_sep);
-            for (size_t i = 0; i < values.size(); ++i)
-                header += create_card (keyname, values[i]);
+            for (const auto& value : values)
+                header += create_card (keyname, value);
             continue;
         }
 

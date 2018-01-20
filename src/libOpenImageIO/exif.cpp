@@ -29,14 +29,13 @@
 */
 
 
-#include <ctype.h>
+#include <cctype>
 #include <cstdio>
 #include <iostream>
 #include <vector>
 #include <set>
 #include <algorithm>
 
-#include <boost/foreach.hpp>
 #include <boost/container/flat_map.hpp>
 
 #include <OpenImageIO/fmath.h>
@@ -72,7 +71,7 @@ struct TIFFDirEntry {
 };
 #endif
 
-#include "OpenImageIO/imageio.h"
+#include <OpenImageIO/imageio.h>
 
 
 #define DEBUG_EXIF_READ  0
@@ -684,7 +683,7 @@ append_dir_entry (const TagMap &tagmap,
     print_dir_entry (tagmap, dir, string_view((const char *)mydata, len));
 #endif
     // Don't double-add
-    BOOST_FOREACH (TIFFDirEntry &d, dirs) {
+    for (TIFFDirEntry &d : dirs) {
         if (d.tdir_tag == tag) {
             d = dir;
             return;
@@ -699,7 +698,7 @@ append_dir_entry (const TagMap &tagmap,
 ///
 template <class T>
 bool
-append_dir_entry_integer (const ImageIOParameter &p, const TagMap &tagmap,
+append_dir_entry_integer (const ParamValue &p, const TagMap &tagmap,
                           std::vector<TIFFDirEntry> &dirs,
                           std::vector<char> &data, int tag, TIFFDataType type)
 {
@@ -732,7 +731,7 @@ append_dir_entry_integer (const ImageIOParameter &p, const TagMap &tagmap,
 /// reside.  Don't worry about it being relative to the start of some
 /// TIFF structure.
 static void
-encode_exif_entry (const ImageIOParameter &p, int tag,
+encode_exif_entry (const ParamValue &p, int tag,
                    std::vector<TIFFDirEntry> &dirs,
                    std::vector<char> &data,
                    const TagMap &tagmap)
@@ -799,7 +798,7 @@ static void
 reoffset (std::vector<TIFFDirEntry> &dirs, const TagMap &tagmap,
           size_t offset)
 {
-    BOOST_FOREACH (TIFFDirEntry &dir, dirs) {
+    for (TIFFDirEntry &dir : dirs) {
         if (tiff_data_size (dir) <= 4 &&
             dir.tdir_tag != TIFFTAG_EXIFIFD && dir.tdir_tag != TIFFTAG_GPSIFD) {
 #if DEBUG_EXIF_WRITE
@@ -880,7 +879,7 @@ decode_exif (string_view exif, ImageSpec &spec)
                        exif, swab, ifd_offsets_seen, exif_tagmap);
 
     // A few tidbits to look for
-    ImageIOParameter *p;
+    ParamValue *p;
     if ((p = spec.find_attribute ("Exif:ColorSpace")) ||
         (p = spec.find_attribute ("ColorSpace"))) {
         int cs = -1;
@@ -958,7 +957,7 @@ encode_exif (const ImageSpec &spec, std::vector<char> &blob)
 
     // Go through all spec attribs, add them to the appropriate tag
     // directory (tiff, gps, or exif).
-    BOOST_FOREACH (const ImageIOParameter &p, spec.extra_attribs) {
+    for (const ParamValue &p : spec.extra_attribs) {
         // Which tag domain are we using?
         if (! strncmp (p.name().c_str(), "GPS:", 4)) {
             // GPS
@@ -1078,7 +1077,7 @@ encode_exif (const ImageSpec &spec, std::vector<char> &blob)
     std::cerr << "resulting exif block is a total of " << blob.size() << "\n";
 #if 0
     std::cerr << "APP1 dump:\n";
-    BOOST_FOREACH (char c, blob) {
+    for (char c : blob) {
         if (c >= ' ')
             std::cerr << c << ' ';
         std::cerr << "(" << (int)c << ") ";

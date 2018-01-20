@@ -33,29 +33,28 @@
 #include <sstream>
 #include <vector>
 #include <cstring>
+#include <memory>
 
 #include <OpenEXR/ImathMatrix.h>
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/typedesc.h"
-#include "OpenImageIO/varyingref.h"
-#include "OpenImageIO/ustring.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/sysutil.h"
-#include "OpenImageIO/timer.h"
-#include "OpenImageIO/optparser.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagecache.h"
-#include "OpenImageIO/texture.h"
-#include "OpenImageIO/simd.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/typedesc.h>
+#include <OpenImageIO/varyingref.h>
+#include <OpenImageIO/ustring.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/thread.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/sysutil.h>
+#include <OpenImageIO/timer.h>
+#include <OpenImageIO/optparser.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagecache.h>
+#include <OpenImageIO/texture.h>
+#include <OpenImageIO/simd.h>
 #include "imagecache_pvt.h"
-
-#include <boost/foreach.hpp>
-#include <boost/scoped_array.hpp>
+#include "imageio_pvt.h"
 
 
 OIIO_NAMESPACE_BEGIN
@@ -72,7 +71,7 @@ spin_mutex ImageCacheImpl::m_perthread_info_mutex;
 
 namespace {  // anonymous
 
-static shared_ptr<ImageCacheImpl> shared_image_cache;
+static std::shared_ptr<ImageCacheImpl> shared_image_cache;
 static spin_mutex shared_image_cache_mutex;
 
 // Make some static ustring constants to avoid strcmp's
@@ -271,7 +270,7 @@ ImageCacheFile::LevelInfo::LevelInfo (const LevelInfo &src)
     int nwords = round_to_multiple (nxtiles * nytiles * nztiles, 64) / 64;
     tiles_read = new atomic_ll [nwords];
     for (int i = 0; i < nwords; ++i)
-        tiles_read[i] = src.tiles_read[i];
+        tiles_read[i] = src.tiles_read[i].load();
 }
 
 
@@ -418,8 +417,7 @@ ImageCacheFile::open (ImageCachePerThreadInfo *thread_info)
         m_input.reset (ImageInput::create (m_filename.string(),
                                            m_imagecache.plugin_searchpath()));
     if (! m_input) {
-        imagecache().error ("%s", OIIO::geterror());
-        m_broken = true;
+        mark_broken (OIIO::geterror());
         invalidate_spec ();
         return false;
     }
@@ -431,7 +429,7 @@ ImageCacheFile::open (ImageCachePerThreadInfo *thread_info)
         configspec.attribute ("oiio:UnassociatedAlpha", 1);
 
     ImageSpec nativespec, tempspec;
-    m_broken = false;
+    mark_not_broken ();
     bool ok = true;
     for (int tries = 0; tries <= imagecache().failure_retries(); ++tries) {
         ok = m_input->open (m_filename.c_str(), nativespec, configspec);
@@ -448,8 +446,7 @@ ImageCacheFile::open (ImageCachePerThreadInfo *thread_info)
         }
     }
     if (! ok) {
-        imagecache().error ("%s", m_input->geterror());
-        m_broken = true;
+        mark_broken (m_input->geterror());
         m_input.reset ();
         return false;
     }
@@ -513,7 +510,7 @@ ImageCacheFile::open (ImageCachePerThreadInfo *thread_info)
                 // No idea what to do with a subimage that doesn't have the
                 // same number of channels as the others, so just skip it.
                 close ();
-                m_broken = true;
+                mark_broken ("Subimages don't all have the same number of channels");
                 invalidate_spec ();
                 return false;
             }
@@ -533,7 +530,7 @@ ImageCacheFile::open (ImageCachePerThreadInfo *thread_info)
             (tempspec.width > 1 || tempspec.height > 1 || tempspec.depth > 1))
             si.unmipped = true;
         if (si.unmipped && imagecache().automip() &&
-            ! tempspec.find_attribute ("textureformat", TypeDesc::TypeString)) {
+            ! tempspec.find_attribute ("textureformat", TypeString)) {
             int w = tempspec.full_width;
             int h = tempspec.full_height;
             int d = tempspec.full_depth;
@@ -567,15 +564,13 @@ ImageCacheFile::open (ImageCachePerThreadInfo *thread_info)
             }
         }
         if (si.untiled && ! imagecache().accept_untiled()) {
-            imagecache().error ("%s was untiled, rejecting", m_filename);
-            m_broken = true;
+            mark_broken ("image was untiled");
             invalidate_spec ();
             m_input.reset ();
             return false;
         }
         if (si.unmipped && ! imagecache().accept_unmipped()) {
-            imagecache().error ("%s was not MIP-mapped, rejecting", m_filename);
-            m_broken = true;
+            mark_broken ("image was not MIP-mapped");
             invalidate_spec ();
             m_input.reset ();
             return false;
@@ -604,8 +599,8 @@ ImageCacheFile::open (ImageCachePerThreadInfo *thread_info)
 void
 ImageCacheFile::init_from_spec ()
 {
-    const ImageSpec &spec (this->spec(0,0));
-    const ImageIOParameter *p;
+    ImageSpec &spec (this->spec(0,0));
+    const ParamValue *p;
 
     // FIXME -- this should really be per-subimage
     if (spec.depth <= 1 && spec.full_depth <= 1)
@@ -671,28 +666,24 @@ ImageCacheFile::init_from_spec ()
 #if USE_SHADOW_MATRICES
     Imath::M44f c2w;
     m_imagecache.get_commontoworld (c2w);
-    if ((p = spec.find_attribute ("worldtocamera", TypeDesc::TypeMatrix))) {
+    if ((p = spec.find_attribute ("worldtocamera", TypeMatrix))) {
         const Imath::M44f *m = (const Imath::M44f *)p->data();
         m_Mlocal = c2w * (*m);
     }
-    if ((p = spec.find_attribute ("worldtoscreen", TypeDesc::TypeMatrix))) {
+    if ((p = spec.find_attribute ("worldtoscreen", TypeMatrix))) {
         const Imath::M44f *m = (const Imath::M44f *)p->data();
         m_Mproj = c2w * (*m);
     }
     // FIXME -- compute Mtex, Mras
 #endif
 
+    // Squash some problematic texture metadata if we suspect it's wrong
+    pvt::check_texture_metadata_sanity (spec);
+
     // See if there's a SHA-1 hash in the image description
-    std::string fing = spec.get_string_attribute ("oiio:SHA-1");
-    if (fing.length()) {
+    string_view fing = spec.get_string_attribute ("oiio:SHA-1");
+    if (fing.length())
         m_fingerprint = ustring(fing);
-        // If it looks like something other than OIIO wrote the file, forget
-        // the fingerprint, it probably is not accurate.
-        string_view software = spec.get_string_attribute ("Software");
-        if (! Strutil::istarts_with (software, "OpenImageIO") &&
-            ! Strutil::istarts_with (software, "maketx"))
-            m_fingerprint.clear ();
-    }
 
     m_mod_time = Filesystem::last_write_time (m_filename.string());
 
@@ -946,7 +937,7 @@ ImageCacheFile::read_untiled (ImageCachePerThreadInfo *thread_info,
         // buffer to be an even multiple of the tile width, so round up.
         stride_t scanlinesize = tw * ((spec.width+tw-1)/tw);
         scanlinesize *= pixelsize;
-        boost::scoped_array<char> buf (new char [scanlinesize * th]); // a whole tile-row size
+        std::unique_ptr<char[]> buf (new char [scanlinesize * th]); // a whole tile-row size
         int yy = y - spec.y;   // counting from top scanline
         // [y0,y1] is the range of scanlines to read for a tile-row
         int y0 = yy - (yy % th);
@@ -1059,7 +1050,7 @@ ImageCacheFile::invalidate ()
     recursive_lock_guard guard (m_input_mutex);
     close ();
     invalidate_spec ();
-    m_broken = false;
+    mark_not_broken ();
     m_fingerprint.clear ();
     duplicate (NULL);
 
@@ -1094,7 +1085,7 @@ ImageCacheFile::get_average_color (float *avg, int subimage,
             bool ok = m_imagecache.get_pixels (this, NULL, subimage, nlevels-1,
                              spec.x, spec.x+1, spec.y, spec.y+1,
                              spec.z, spec.z+1, 0, spec.nchannels,
-                             TypeDesc::TypeFloat, &si.average_color[0]);
+                             TypeFloat, &si.average_color[0]);
             si.has_average_color = ok;
         }
     }
@@ -1115,6 +1106,28 @@ int
 ImageCacheFile::errors_should_issue () const
 {
     return (++m_errors_issued <= imagecache().max_errors_per_file());
+}
+
+
+
+void
+ImageCacheFile::mark_not_broken ()
+{
+    m_broken = false;
+    m_broken_message.clear();
+}
+
+
+
+void
+ImageCacheFile::mark_broken (string_view error)
+{
+    m_broken = true;
+    if (! error.size())
+        error = string_view("unknown error");
+    m_broken_message = error;
+    imagecache().error ("%s", error);
+    invalidate_spec ();
 }
 
 
@@ -1362,13 +1375,7 @@ ImageCacheImpl::check_max_files (ImageCachePerThreadInfo *thread_info)
 void
 ImageCacheImpl::set_min_cache_size (long long newsize)
 {
-    long long oldsize = m_max_memory_bytes;
-    while (newsize > oldsize) {
-	if (atomic_compare_and_exchange ((long long *)&m_max_memory_bytes,
-                                         oldsize, newsize))
-            return;
-        oldsize = m_max_memory_bytes;
-    }
+    atomic_max (m_max_memory_bytes, newsize);
 }
 
 
@@ -1852,7 +1859,7 @@ ImageCacheImpl::getstats (int level) const
             std::sort (files.begin(), files.end(), bytesread_compare);
             out << "  Top files by bytes read:\n";
             nprinted = 0;
-            BOOST_FOREACH (const ImageCacheFileRef &file, files) {
+            for (const ImageCacheFileRef &file : files) {
                 if (nprinted++ >= topN)
                     break;
                 if (file->broken() || !file->validspec())
@@ -1865,7 +1872,7 @@ ImageCacheImpl::getstats (int level) const
             std::sort (files.begin(), files.end(), iotime_compare);
             out << "  Top files by I/O time:\n";
             nprinted = 0;
-            BOOST_FOREACH (const ImageCacheFileRef &file, files) {
+            for (const ImageCacheFileRef &file : files) {
                 if (nprinted++ >= topN)
                     break;
                 if (file->broken() || !file->validspec())
@@ -1878,7 +1885,7 @@ ImageCacheImpl::getstats (int level) const
             std::sort (files.begin(), files.end(), iorate_compare);
             out << "  Files with slowest I/O rates:\n";
             nprinted = 0;
-            BOOST_FOREACH (const ImageCacheFileRef &file, files) {
+            for (const ImageCacheFileRef &file : files) {
                 if (file->broken() || !file->validspec())
                     continue;
                 if (file->iotime() < 0.25)
@@ -1899,7 +1906,7 @@ ImageCacheImpl::getstats (int level) const
                 std::sort (files.begin(), files.end(), redundantbytes_compare);
                 out << "  Top files by redundant I/O:\n";
                 nprinted = 0;
-                BOOST_FOREACH (const ImageCacheFileRef &file, files) {
+                for (const ImageCacheFileRef &file : files) {
                     if (nprinted++ >= topN)
                         break;
                     if (file->broken() || !file->validspec())
@@ -1912,7 +1919,7 @@ ImageCacheImpl::getstats (int level) const
             }
         }
         int nbroken = 0;
-        BOOST_FOREACH (const ImageCacheFileRef &file, files) {
+        for (const ImageCacheFileRef &file : files) {
             if (file->broken())
                 ++nbroken;
         }
@@ -1920,7 +1927,7 @@ ImageCacheImpl::getstats (int level) const
         if (nbroken) {
             std::sort (files.begin(), files.end(), filename_compare);
             int nprinted = 0;
-            BOOST_FOREACH (const ImageCacheFileRef &file, files) {
+            for (const ImageCacheFileRef &file : files) {
                 if (file->broken()) {
                     ++nprinted;
                     out << Strutil::format ("   %4d  %s\n", nprinted, file->filename());
@@ -2146,12 +2153,12 @@ ImageCacheImpl::getattribute (string_view name, TypeDesc type,
         *(ustring *)val = m_plugin_searchpath;
         return true;
     }
-    if (name == "worldtocommon" && (type == TypeDesc::TypeMatrix ||
+    if (name == "worldtocommon" && (type == TypeMatrix ||
                                     type == TypeDesc(TypeDesc::FLOAT,16))) {
         *(Imath::M44f *)val = m_Mw2c;
         return true;
     }
-    if (name == "commontoworld" && (type == TypeDesc::TypeMatrix ||
+    if (name == "commontoworld" && (type == TypeMatrix ||
                                     type == TypeDesc(TypeDesc::FLOAT,16))) {
         *(Imath::M44f *)val = m_Mc2w;
         return true;
@@ -2461,7 +2468,7 @@ ImageCacheImpl::get_image_info (ImageCacheFile *file,
     }
 
     file = verify_file (file, thread_info, true);
-    if (dataname == s_exists && datatype == TypeDesc::TypeInt) {
+    if (dataname == s_exists && datatype == TypeInt) {
         // Just check for existence.  Need to do this before the invalid
         // file error below, since in this one case, it's not an error
         // for the file to be nonexistant or broken!
@@ -2489,12 +2496,13 @@ ImageCacheImpl::get_image_info (ImageCacheFile *file,
 
     if (file->broken()) {
         if (file->errors_should_issue())
-            error ("Invalid image file \"%s\"", file->filename());
+            error ("Invalid image file \"%s\": %s",
+                   file->filename(), file->broken_error_message());
         return false;
     }
     // No other queries below are expected to work with broken
 
-    if (dataname == s_UDIM && datatype == TypeDesc::TypeInt) {
+    if (dataname == s_UDIM && datatype == TypeInt) {
         // Just check for existence.  Need to do this before the invalid
         // file error below, since in this one case, it's not an error
         // for the file to be nonexistant or broken!
@@ -2524,7 +2532,7 @@ ImageCacheImpl::get_image_info (ImageCacheFile *file,
     if (file->is_udim()) {
         return false;     // UDIM-like files fail all other queries
     }
-    if (dataname == s_subimages && datatype == TypeDesc::TypeInt) {
+    if (dataname == s_subimages && datatype == TypeInt) {
         *(int *)data = file->subimages();
         return true;
     }
@@ -2558,38 +2566,38 @@ ImageCacheImpl::get_image_info (ImageCacheFile *file,
         d[2] = spec.depth;
         return true;
     }
-    if (dataname == s_texturetype && datatype == TypeDesc::TypeString) {
+    if (dataname == s_texturetype && datatype == TypeString) {
         ustring s (texture_type_name (file->textureformat()));
         *(const char **)data = s.c_str();
         return true;
     }
-    if (dataname == s_textureformat && datatype == TypeDesc::TypeString) {
+    if (dataname == s_textureformat && datatype == TypeString) {
         ustring s (texture_format_name (file->textureformat()));
         *(const char **)data = s.c_str();
         return true;
     }
-    if (dataname == s_fileformat && datatype == TypeDesc::TypeString) {
+    if (dataname == s_fileformat && datatype == TypeString) {
         *(const char **)data = file->fileformat().c_str();
         return true;
     }
-    if (dataname == s_channels && datatype == TypeDesc::TypeInt) {
+    if (dataname == s_channels && datatype == TypeInt) {
         *(int *)data = spec.nchannels;
         return true;
     }
-    if (dataname == s_channels && datatype == TypeDesc::TypeFloat) {
+    if (dataname == s_channels && datatype == TypeFloat) {
         *(float *)data = spec.nchannels;
         return true;
     }
-    if (dataname == s_format && datatype == TypeDesc::TypeInt) {
+    if (dataname == s_format && datatype == TypeInt) {
         *(int *)data = (int) spec.format.basetype;
         return true;
     }
     if ((dataname == s_cachedformat || dataname == s_cachedpixeltype) &&
-            datatype == TypeDesc::TypeInt) {
+            datatype == TypeInt) {
         *(int *)data = (int) file->datatype(subimage).basetype;
         return true;
     }
-    if (dataname == s_miplevels && datatype == TypeDesc::TypeInt) {
+    if (dataname == s_miplevels && datatype == TypeInt) {
         *(int *)data = file->miplevels(subimage);
         return true;
     }
@@ -2658,7 +2666,7 @@ ImageCacheImpl::get_image_info (ImageCacheFile *file,
 
     // general case -- handle anything else that's able to be found by
     // spec.find_attribute().
-    const ImageIOParameter *p = spec.find_attribute (dataname.string());
+    const ParamValue *p = spec.find_attribute (dataname.string());
     if (p && p->type().arraylen == datatype.arraylen) {
         // First test for exact type match
         if (p->type() == datatype) {
@@ -2742,7 +2750,8 @@ ImageCacheImpl::imagespec (ImageCacheFile *file,
     file = verify_file (file, thread_info, true);
     if (file->broken()) {
         if (file->errors_should_issue())
-            error ("Invalid image file \"%s\"", file->filename());
+            error ("Invalid image file \"%s\": %s",
+                   file->filename(), file->broken_error_message());
         return NULL;
     }
     if (file->is_udim()) {
@@ -2847,7 +2856,8 @@ ImageCacheImpl::get_pixels (ImageCacheFile *file,
     file = verify_file (file, thread_info);
     if (file->broken()) {
         if (file->errors_should_issue())
-            error ("Invalid image file \"%s\"", file->filename());
+            error ("Invalid image file \"%s\": %s",
+                   file->filename(), file->broken_error_message());
         return false;
     }
     if (file->is_udim()) {
@@ -3158,9 +3168,8 @@ ImageCacheImpl::invalidate (ustring filename)
     // N.B. at this point, we hold no locks!
 
     // Safely erase all the tiles we found
-    BOOST_FOREACH (const TileID &id, tiles_to_delete) {
+    for (const TileID &id : tiles_to_delete)
         m_tilecache.erase (id);
-    }
 
     // Invalidate the file itself (close it and clear its spec)
     file->invalidate ();
@@ -3190,9 +3199,8 @@ ImageCacheImpl::invalidate_all (bool force)
              t != e;  ++t) {
             tiles_to_delete.push_back (t->second->id());
         }
-        BOOST_FOREACH (const TileID &id, tiles_to_delete) {
+        for (const TileID &id : tiles_to_delete)
             m_tilecache.erase (id);
-        }
         // Invalidate (close and clear spec) all individual files
         for (FilenameMap::iterator fileit = m_files.begin(), e = m_files.end();
                  fileit != e;  ++fileit) {
@@ -3254,7 +3262,7 @@ ImageCacheImpl::invalidate_all (bool force)
     }
 
     // Now, invalidate all the files in our "needs invalidation" list
-    BOOST_FOREACH (ustring f, all_files) {
+    for (auto f : all_files) {
         // fprintf (stderr, "Invalidating %s\n", f.c_str());
         invalidate (f);
     }

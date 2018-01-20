@@ -31,7 +31,9 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "OpenImageIO/timer.h"
+#include <OpenImageIO/timer.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/thread.h>
 
 
 OIIO_NAMESPACE_BEGIN
@@ -63,5 +65,7 @@ public:
 };
 
 static TimerSetupOnce once;
+
+
 
 OIIO_NAMESPACE_END

@@ -37,21 +37,24 @@
 
 
 
+#pragma once
 #ifndef OPENIMAGEIO_STRUTIL_H
 #define OPENIMAGEIO_STRUTIL_H
 
-#include <cstdarg>
 #include <string>
-#include <cstring>
-#include <cstdlib>
+#include <cstdio>
 #include <vector>
 #include <map>
 
-#include "export.h"
-#include "oiioversion.h"
-#include "tinyformat.h"
-#include "string_view.h"
-#include "hash.h"
+#include <OpenImageIO/export.h>
+#include <OpenImageIO/oiioversion.h>
+#include <OpenImageIO/string_view.h>
+#include <OpenImageIO/hash.h>
+
+#ifndef TINYFORMAT_USE_VARIADIC_TEMPLATES
+# define TINYFORMAT_USE_VARIADIC_TEMPLATES
+#endif
+#include <OpenImageIO/tinyformat.h>
 
 #ifndef OPENIMAGEIO_PRINTF_ARGS
 #   ifndef __GNUC__
@@ -79,16 +82,53 @@ OIIO_NAMESPACE_BEGIN
 /// @brief     String-related utilities.
 namespace Strutil {
 
+/// Output the string to the file/stream in a synchronized fashion, so that
+/// buffers are flushed and internal mutex is used to prevent threads from
+/// clobbering each other -- output strings coming from concurrent threads
+/// may be interleaved, but each string is "atomic" and will never splice
+/// each other character-by-character.
+void OIIO_API sync_output (FILE *file, string_view str);
+void OIIO_API sync_output (std::ostream &file, string_view str);
+
+
 /// Construct a std::string in a printf-like fashion.  In other words,
 /// something like:
 ///    std::string s = Strutil::format ("blah %d %g", (int)foo, (float)bar);
 ///
-/// The printf argument list is fully typesafe via tinyformat; format
-/// conceptually has the signature
-///
-/// std::string Strutil::format (const char *fmt, ...);
-TINYFORMAT_WRAP_FORMAT (std::string, format, /**/,
-    std::ostringstream msg;, msg, return msg.str();)
+/// Uses the tinyformat library underneath, so it's fully type-safe, and
+/// works with any types that understand stream output via '<<'.
+template<typename... Args>
+inline std::string format (string_view fmt, const Args&... args)
+{
+    return tinyformat::format (fmt.c_str(), args...);
+}
+
+
+/// Output formatted string to stdout, type-safe, and threads can't clobber
+/// one another.
+template<typename... Args>
+inline void printf (string_view fmt, const Args&... args)
+{
+    sync_output (stdout, format(fmt, args...));
+}
+
+/// Output formatted string to an open FILE*, type-safe, and threads can't
+/// clobber one another.
+template<typename... Args>
+inline void fprintf (FILE *file, string_view fmt, const Args&... args)
+{
+    sync_output (file, format(fmt, args...));
+}
+
+/// Output formatted string to an open ostream, type-safe, and threads can't
+/// clobber one another.
+template<typename... Args>
+inline void fprintf (std::ostream &file, string_view fmt, const Args&... args)
+{
+    sync_output (file, format(fmt, args...));
+}
+
+
 
 /// Return a std::string formatted from printf-like arguments.  Like the
 /// real sprintf, this is not guaranteed type-safe and is not extensible
@@ -221,12 +261,16 @@ inline bool string_is (string_view /*s*/) {
 }
 // Special case for int
 template <> inline bool string_is<int> (string_view s) {
+    if (s.empty())
+        return false;
     char *endptr = 0;
     strtol (s.data(), &endptr, 10);
     return (s.data() + s.size() == endptr);
 }
 // Special case for float
 template <> inline bool string_is<float> (string_view s) {
+    if (s.empty())
+        return false;
     char *endptr = 0;
     strtod (s.data(), &endptr);
     return (s.data() + s.size() == endptr);
@@ -368,14 +412,11 @@ std::string OIIO_API utf16_to_utf8(const std::wstring& utf16str);
 #endif
 
 
-/// Safe C string copy.  Basically strncpy but ensuring that there's a
-/// terminating 0 character at the end of the resulting string.
-OIIO_API char * safe_strcpy (char *dst, const char *src, size_t size);
-
-inline char * safe_strcpy (char *dst, const std::string &src, size_t size) {
-    return safe_strcpy (dst, src.length() ? src.c_str() : NULL, size);
-}
-
+/// Copy at most size characters (including terminating 0 character) from
+/// src into dst[], filling any remaining characters with 0 values. Returns
+/// dst. Note that this behavior is identical to strncpy, except that it
+/// guarantees that there will be a termining 0 character.
+OIIO_API char * safe_strcpy (char *dst, string_view src, size_t size);
 
 
 /// Modify str to trim any whitespace (space, tab, linefeed, cr) from the

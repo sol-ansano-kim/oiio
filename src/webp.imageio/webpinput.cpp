@@ -29,16 +29,16 @@
 */
 #include <cstdio>
 #include <webp/decode.h>
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
 namespace webp_pvt {
 
 
-class WebpInput : public ImageInput
+class WebpInput final : public ImageInput
 {
  public:
     WebpInput() { init(); }
