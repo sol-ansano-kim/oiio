@@ -124,13 +124,29 @@ if rv["require"]:
    oiio_opts["Boost_LIBRARIES"] = ";".join(libs)
 
    pylib = rv["libdir"] + "/libboost_python" + libsuffix
+   if not os.path.isfile(pylib):
+      ARGUMENTS["boost-python-static"] = "1"
+      pyrv = excons.ExternalLibRequire("boost-python")
+      if pyrv["require"] and pyrv["libdir"] != rv["libdir"]:
+         pylibsuffix = excons.GetArgument("boost-python-suffix", "")
+         if pylibsuffix:
+            if sys.platform == "win32":
+               pylibsuffix += "-vc%d-mt-%s.lib" % (int(float(excons.mscver) * 10), strver)
+            else:
+               pylibsuffix += ".a"
+         else:
+            pylibsuffix = libsuffix
+         pylib = pyrv["libdir"] + "/libboost_python" + pylibsuffix
+         if pyrv["incdir"] != rv["incdir"]:
+            oiio_opts["Boost_INCLUDE_DIRS"] += ";%s" % pyrv["incdir"]
+         oiio_opts["Boost_LIBRARY_DIRS"] += ";%s" % pyrv["libdir"]
+
    if os.path.isfile(pylib):
       oiio_opts["boost_PYTHON_FOUND"] = 1
       oiio_opts["Boost_PYTHON_LIBRARIES"] = pylib
    else:
       excons.WarnOnce("No valid Boost python found. Skipping python module.", tool="OIIO")
       oiio_opts["boost_PYTHON_FOUND"] = 0   
-
 else:
    excons.WarnOnce("Boost is require to build OpenImageIO, please provide root directory using 'with-boost=' flag", tool="OIIO")
    sys.exit(1)
