@@ -7,8 +7,8 @@ import glob
 
 
 major = 1
-minor = 7
-patch = 17
+minor = 8
+patch = 5
 
 env = excons.MakeBaseEnv()
 out_basedir = excons.OutputBaseDirectory()
@@ -41,24 +41,19 @@ prjs = []
 oiio_opts = {}
 overrides = {}
 oiio_dependecies = []
-extra_libs = []
-extra_includes = []
 
 # build options
 oiio_opts["LINKSTATIC"] = 1
 oiio_opts["USE_fPIC"] = 1
 oiio_opts["BUILDSTATIC"] = (1 if staticlib else 0)
-oiio_opts["NOTHREADS"] = 0
 oiio_opts["OIIO_THREAD_ALLOW_DCLP"] = 1
 oiio_opts["SOVERSION"] = "%s.%s" % (major, minor)
-oiio_opts["USE_CPP11"] = 1
-oiio_opts["USE_CPP14"] = 0
+oiio_opts["USE_CPP"] = 11
 oiio_opts["USE_LIBCPLUSPLUS"] = 0
 oiio_opts["USE_CCACHE"] = 0
 oiio_opts["CODECOV"] = 0
 oiio_opts["HIDE_SYMBOLS"] = 1
 oiio_opts["USE_SIMD"] = simd
-oiio_opts["INSTALL_SYSTEM_RUNTIME"] = 0
 oiio_opts["OIIO_BUILD_TESTS"] = 0
 oiio_opts["OIIO_BUILD_TOOLS"] = 1
 oiio_opts["EMBEDPLUGINS"] = 1
@@ -67,15 +62,8 @@ oiio_opts["VERBOSE"] = verbose
 # python
 oiio_opts["PYLIB_INCLUDE_SONAME"] = 0
 oiio_opts["PYLIB_LIB_PREFIX"] = 0
-
-if int(python_ver.split(".")[0]) == 2:
-    oiio_opts["PYTHON_VERSION"] = python_ver
-    oiio_opts["USE_PYTHON"] = 1
-    oiio_opts["USE_PYTHON3"] = 0
-else:
-    oiio_opts["PYTHON3_VERSION"] = python_ver
-    oiio_opts["USE_PYTHON"] = 0
-    oiio_opts["USE_PYTHON3"] = 1
+oiio_opts["PYTHON_VERSION"] = python_ver
+oiio_opts["USE_PYTHON"] = 1
 
 if python_dir:
     if sys.platform == "win32":
@@ -223,28 +211,6 @@ else:
 
 oiio_dependecies += bzip2_outputs
 
-# jbig (no deps [SCons])
-rv = excons.cmake.ExternalLibRequire(oiio_opts, "jbig")
-if not rv["require"]:
-    excons.PrintOnce("OIIO: Build jbig from sources ...")
-    excons.Call("jbigkit", imp=["JbigName", "JbigPath"])
-    jbig_path = JbigPath()
-    jbig_outputs = [jbig_path, out_incdir + "/jbig_ar.h"]
-
-    overrides["with-jbig"] = os.path.dirname(os.path.dirname(jbig_path))
-    overrides["jbig-static"] = 1
-    overrides["jbig-name"] = JbigName()
-
-    extra_libs.append(JbigPath())
-else:
-    jbig_outputs = []
-    if not rv["libpath"]:
-        excons.WarnOnce("Could not find JBIG library", tool="OIIO")
-        sys.exit(1)
-    extra_libs.append(rv["libpath"])
-
-oiio_dependecies += jbig_outputs
-
 # jpeg (no deps [CMake/Automake])
 #overrides["libjpeg-jpeg8"] = 1
 def JpegLibname(static):
@@ -256,7 +222,7 @@ if not rv["require"]:
     excons.Call("libjpeg-turbo", overrides=overrides, imp=["LibjpegName", "LibjpegPath"])
     jpeg_static = excons.GetArgument("libjpeg-static", 1, int)
     jpeg_path = LibjpegPath(static=jpeg_static)
-    jpeg_outputs = [LibjpegPath(static=jpeg_static)]
+    jpeg_outputs = [jpeg_path]
 
     oiio_opts["JPEG_INCLUDE_DIR"] = out_incdir
     oiio_opts["JPEG_LIBRARY"] = jpeg_path
@@ -278,9 +244,6 @@ if not rv["require"]:
 
     oiio_opts["OPENJPEG_HOME"] = excons.OutputBaseDirectory()
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = out_incdir + "/openjpeg-2.1"
-    oiio_opts["OPENJPEG_LIBRARY"] = OpenjpegPath()
-    oiio_opts["OPENJPEG_LIBRARY_RELEASE"] = OpenjpegPath()
-    oiio_opts["OPENJPEG_LIBRARY_DEBUG"] = OpenjpegPath()
 else:
     oiio_opts["OPENJPEG_HOME"] = os.path.dirname(rv["incdir"])
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = rv["incdir"] + "/openjpeg-2.1"
@@ -316,7 +279,9 @@ else:
 
 oiio_dependecies += libpng_outputs
 
-# tiff (depends on zlib, jpeg, jbig [CMake])
+# tiff (depends on zlib, jpeg [CMake])
+
+overrides["libtiff-use-jbig"] = 0
 
 def TiffLibname(static):
     return "tiff"
@@ -324,7 +289,7 @@ def TiffLibname(static):
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "libtiff", libnameFunc=TiffLibname, varPrefix="TIFF_")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build libtiff from sources ...")
-    excons.cmake.AddConfigureDependencies("libtiff", jbig_outputs + zlib_outputs + jpeg_outputs)
+    excons.cmake.AddConfigureDependencies("libtiff", zlib_outputs + jpeg_outputs)
     excons.Call("libtiff", overrides=overrides, imp=["LibtiffName", "LibtiffPath"])
     tiff_path = LibtiffPath()
     tiff_outputs = [tiff_path]
@@ -354,7 +319,6 @@ if not rv["require"]:
     lcms2_outputs = [lcms2_path]
 
     oiio_opts["LCMS2_LIBRARY"] = lcms2_path
-    oiio_opts["LCMS2_INCLUDE_DIR"] = out_incdir
 
     overrides["with-lcms2"] = os.path.dirname(os.path.dirname(lcms2_path))
     overrides["lcms2-static"] = lcms2_static
@@ -419,8 +383,7 @@ if not rv["require"]:
     ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
     ocio_outputs = [OCIOPath(ocio_static), YamlCppPath(), TinyXmlPath()]
     
-    oiio_opts["OCIO_INCLUDE_DIR"] = out_incdir
-    # oiio_opts["OCIO_LIBRARY"] = OCIOPath(ocio_static)
+    oiio_opts["OCIO_INCLUDE_PATH"] = out_incdir
     oiio_opts["OCIO_LIBRARIES"] = OCIOPath(ocio_static)
     oiio_opts["LCMS2_LIBRARY"] = LCMS2Path()
     oiio_opts["YAML_LIBRARY"] = YamlCppPath()
@@ -465,8 +428,6 @@ oiio_dependecies += openexr_outputs
 
 
 # oiio build
-oiio_opts["EXTERNAL_LIBS"] = ";".join(extra_libs)
-oiio_opts["EXTERNAL_INCLUDE_DIRS"] = ";".join(extra_includes)
 
 for k, v in oiio_opts.iteritems():
     if isinstance(v, basestring):
