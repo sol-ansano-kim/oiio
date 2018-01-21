@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.2.2)
 cmake_policy (SET CMP0048 NEW)  # Allow VERSION specifier in project()
 project (OpenImageIO
-         VERSION 1.8.5
+         VERSION 1.8.6
          LANGUAGES CXX C)
 set (PROJ_NAME OIIO)    # short name, caps
 string (TOLOWER ${PROJ_NAME} PROJ_NAME_LOWER)  # short name lower case
@@ -228,7 +228,8 @@ add_custom_target ( CopyFiles ALL DEPENDS "${CMAKE_BINARY_DIR}/testsuite/runtest
 oiio_add_tests (
                 gpsread misnamed-file nonwhole-tiles
                 oiiotool oiiotool-attribs
-                oiiotool-composite oiiotool-deep oiiotool-fixnan
+                oiiotool-composite oiiotool-copy
+                oiiotool-deep oiiotool-fixnan
                 oiiotool-pattern oiiotool-readerror
                 oiiotool-subimage oiiotool-text oiiotool-xform
                 maketx oiiotool-maketx

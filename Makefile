@@ -36,7 +36,7 @@ CMAKE ?= cmake
 ifndef OPENIMAGEIO_SITE
     OPENIMAGEIO_SITE := ${shell uname -n}
 endif
-ifneq (${shell echo ${OPENIMAGEIO_SITE} | grep imageworks},)
+ifneq (${shell echo ${OPENIMAGEIO_SITE} | grep imageworks.com},)
 include ${working_dir}/site/spi/Makefile-bits
 endif
 
@@ -283,7 +283,7 @@ MY_CMAKE_FLAGS += -G Ninja
 BUILDSENTINEL := build.ninja
 endif
 
-ifneq (${CODECOV},)
+ifeq (${CODECOV},1)
 MY_CMAKE_FLAGS += -DCMAKE_BUILD_TYPE:STRING=Debug -DCODECOV:BOOL=${CODECOV}
 endif
 

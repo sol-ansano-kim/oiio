@@ -146,12 +146,17 @@ if (GDCM_FOUND)
 endif ()
 
 
+if (MSVC)
+    set_property (SOURCE imagebufalgo_pixelmath.cpp APPEND_STRING PROPERTY COMPILE_FLAGS " /bigobj ")
+endif ()
 
 if (WIN32)
     target_link_libraries (OpenImageIO psapi.lib)
 endif ()
 
-add_dependencies (OpenImageIO "${VISIBILITY_MAP_FILE}")
+if (VISIBILITY_MAP_FILE)
+    add_dependencies (OpenImageIO "${VISIBILITY_MAP_FILE}")
+endif ()
 
 if (USE_EXTERNAL_PUGIXML)
     target_link_libraries (OpenImageIO ${PUGIXML_LIBRARIES})
