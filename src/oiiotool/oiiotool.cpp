@@ -1325,34 +1325,20 @@ set_input_attribute (int argc, const char *argv[])
         return 0;
     }
 
-    // Does it seem to be an int, or did the caller explicitly request
-    // that it be set as an int?
-    char *p = NULL;
-    int i = strtol (value.c_str(), &p, 10);
-    while (*p && isspace(*p))
-        ++p;
-    if ((! *p && type == TypeDesc::UNKNOWN) || type == TypeDesc::INT) {
-        // int conversion succeeded and accounted for the whole string --
-        // so set an int attribute.
-        ot.input_config.attribute (attribname, i);
-        return 0;
+    if (type == TypeInt ||
+        (type == TypeUnknown && Strutil::string_is_int(value))) {
+        // Does it seem to be an int, or did the caller explicitly request
+        // that it be set as an int?
+        ot.input_config.attribute (attribname, Strutil::stoi(value));
+    } else if (type == TypeFloat ||
+        (type == TypeUnknown && Strutil::string_is_float(value))) {
+        // Does it seem to be a float, or did the caller explicitly request
+        // that it be set as a float?
+        ot.input_config.attribute (attribname, Strutil::stof(value));
+    } else {
+        // Otherwise, set it as a string attribute
+        ot.input_config.attribute (attribname, value);
     }
-
-    // Does it seem to be a float, or did the caller explicitly request
-    // that it be set as a float?
-    p = NULL;
-    float f = (float)strtod (value.c_str(), &p);
-    while (*p && isspace(*p))
-        ++p;
-    if ((! *p && type == TypeDesc::UNKNOWN) || type == TypeDesc::FLOAT) {
-        // float conversion succeeded and accounted for the whole string --
-        // so set a float attribute.
-        ot.input_config.attribute (attribname, f);
-        return 0;
-    }
-
-    // Otherwise, set it as a string attribute
-    ot.input_config.attribute (attribname, value);
     return 0;
 }
 
@@ -1478,38 +1464,28 @@ OiioTool::set_attribute (ImageRecRef img, string_view attribname,
         return true;
     }
 
-    // Does it seem to be an int, or did the caller explicitly request
-    // that it be set as an int?
-    char *p = NULL;
-    int i = strtol (value.c_str(), &p, 10);
-    while (*p && isspace(*p))
-        ++p;
-    if ((! *p && type == TypeDesc::UNKNOWN) || type == TypeDesc::INT) {
-        // int conversion succeeded and accounted for the whole string --
-        // so set an int attribute.
+    if (type == TypeInt ||
+        (type == TypeUnknown && Strutil::string_is_int(value))) {
+        // Does it seem to be an int, or did the caller explicitly request
+        // that it be set as an int?
+        int v = Strutil::stoi(value);
         return apply_spec_mod (*img, do_set_any_attribute<int>,
-                               std::pair<std::string,int>(attribname,i),
+                               std::pair<std::string,int>(attribname,v),
                                allsubimages);
-    }
-
-    // Does it seem to be a float, or did the caller explicitly request
-    // that it be set as a float?
-    p = NULL;
-    float f = (float)strtod (value.c_str(), &p);
-    while (*p && isspace(*p))
-        ++p;
-    if ((! *p && type == TypeDesc::UNKNOWN) || type == TypeDesc::FLOAT) {
-        // float conversion succeeded and accounted for the whole string --
-        // so set a float attribute.
+    } else if (type == TypeFloat ||
+        (type == TypeUnknown && Strutil::string_is_float(value))) {
+        // Does it seem to be a float, or did the caller explicitly request
+        // that it be set as a float?
+        float v = Strutil::stof(value);
         return apply_spec_mod (*img, do_set_any_attribute<float>,
-                               std::pair<std::string,float>(attribname,f),
+                               std::pair<std::string,float>(attribname,v),
+                               allsubimages);
+    } else {
+        // Otherwise, set it as a string attribute
+        return apply_spec_mod (*img, do_set_any_attribute<std::string>,
+                               std::pair<std::string,std::string>(attribname,value),
                                allsubimages);
     }
-
-    // Otherwise, set it as a string attribute
-    return apply_spec_mod (*img, do_set_any_attribute<std::string>,
-                           std::pair<std::string,std::string>(attribname,value),
-                           allsubimages);
 }
 
 
@@ -3789,7 +3765,7 @@ action_mosaic (int argc, const char *argv[])
     std::map<std::string,std::string> options;
     options["pad"] = "0";
     ot.extract_options (options, command);
-    int pad = strtol (options["pad"].c_str(), NULL, 10);
+    int pad = Strutil::stoi (options["pad"]);
 
     ImageSpec Rspec (ximages*widest + (ximages-1)*pad,
                      yimages*highest + (yimages-1)*pad,
@@ -4016,7 +3992,7 @@ action_clamp (int argc, const char *argv[])
         ot.extract_options (options, command);
         Strutil::extract_from_list_string (min, options["min"]);
         Strutil::extract_from_list_string (max, options["max"]);
-        bool clampalpha01 = strtol (options["clampalpha"].c_str(), NULL, 10) != 0;
+        bool clampalpha01 = Strutil::stoi (options["clampalpha"]);
 
         for (int m = 0, miplevels=R->miplevels(s);  m < miplevels;  ++m) {
             ImageBuf &Rib ((*R)(s,m));
@@ -4522,7 +4498,7 @@ output_file (int argc, const char *argv[])
     string_view formatname = fileoptions["fileformatname"];
     if (formatname.empty())
         formatname = filename;
-    ImageOutput *out = ImageOutput::create (formatname);
+    std::unique_ptr<ImageOutput> out (ImageOutput::create (formatname));
     if (! out) {
         std::string err = OIIO::geterror();
         ot.error (command, err.size() ? err.c_str() : "unknown error creating an ImageOutput");
@@ -4690,7 +4666,9 @@ output_file (int argc, const char *argv[])
                                          configspec, &std::cout);
         if (!ok)
             ot.error (command, "Could not make texture");
-
+        // N.B. make_texture already internally writes to a temp file and
+        // then atomically moves it to the final destination, so we don't
+        // need to explicitly do that here.
     } else {
         // Non-texture case
         std::vector<ImageSpec> subimagespecs (ir->subimages());
@@ -4708,16 +4686,29 @@ output_file (int argc, const char *argv[])
             subimagespecs[s] = spec;
         }
 
+        // Write the output to a temp file first, then rename it to the
+        // final destination (same directory). This improves robustness.
+        // There is less chance a crash during execution will leave behind a
+        // partially formed file, and it also protects us against corrupting
+        // an input if they are "oiiotooling in place" (especially
+        // problematic for large files that are ImageCache-based and so only
+        // partially read at the point that we open the file. We also force
+        // a unique filename to protect against multiple processes running
+        // at the same time on the same file.
+        std::string extension = Filesystem::extension(filename);
+        std::string tmpfilename = Filesystem::replace_extension (filename, ".%%%%%%%%.temp"+extension);
+        tmpfilename = Filesystem::unique_path(tmpfilename);
+
         // Do the initial open
         ImageOutput::OpenMode mode = ImageOutput::Create;
         if (ir->subimages() > 1 && out->supports("multiimage")) {
-            if (! out->open (filename, ir->subimages(), &subimagespecs[0])) {
+            if (! out->open (tmpfilename, ir->subimages(), &subimagespecs[0])) {
                 std::string err = out->geterror();
                 ot.error (command, err.size() ? err.c_str() : "unknown error");
                 return 0;
             }
         } else {
-            if (! out->open (filename, subimagespecs[0], mode)) {
+            if (! out->open (tmpfilename, subimagespecs[0], mode)) {
                 std::string err = out->geterror();
                 ot.error (command, err.size() ? err.c_str() : "unknown error");
                 return 0;
@@ -4732,14 +4723,14 @@ output_file (int argc, const char *argv[])
                                        ot, supports_tiles,
                                        fileoptions, (*ir)[s].was_direct_read());
                 if (s > 0 || m > 0) {  // already opened first subimage/level
-                    if (! out->open (filename, spec, mode)) {
+                    if (! out->open (tmpfilename, spec, mode)) {
                         std::string err = out->geterror();
                         ot.error (command, err.size() ? err.c_str() : "unknown error");
                         ok = false;
                         break;
                     }
                 }
-                if (! (*ir)(s,m).write (out)) {
+                if (! (*ir)(s,m).write (out.get())) {
                     ot.error (command, (*ir)(s,m).geterror());
                     ok = false;
                     break;
@@ -4766,9 +4757,24 @@ output_file (int argc, const char *argv[])
         }
 
         out->close ();
+        out.reset ();    // make extra sure it's cleaned up
+
+        // We wrote to a temporary file, so now atomically move it to the
+        // original desired location.
+        if (ok) {
+            std::string err;
+            ok = Filesystem::rename (tmpfilename, filename, err);
+            if (! ok)
+                ot.error (command, Strutil::format("oiiotool ERROR: could not move temp file %s to %s: %s",
+                                                   tmpfilename, filename, err));
+        }
+        if (! ok)
+            Filesystem::remove (tmpfilename);
     }
 
-    delete out;
+    // Make sure to invalidate any IC entries that think they are the
+    // file we just wrote.
+    ot.imagecache->invalidate (ustring(filename));
 
     if (ot.output_adjust_time && ok) {
         std::string metadatatime = ir->spec(0,0)->get_string_attribute ("DateTime");
@@ -5418,6 +5424,10 @@ main (int argc, char *argv[])
      // fit Linux way.
     _set_output_format (_TWO_DIGIT_EXPONENT);
 #endif
+
+    // Globally force classic "C" locale, and turn off all formatting
+    // internationalization, for the entire oiiotool application.
+    std::locale::global (std::locale::classic());
 
     ot.imagecache = ImageCache::create (false);
     ASSERT (ot.imagecache);

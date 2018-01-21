@@ -2,7 +2,7 @@
 
 language: cpp
 sudo: false
-osx_image: xcode7.3
+osx_image: xcode8.3
 dist: trusty
 
 
@@ -21,7 +21,11 @@ addons:
       - g++-5
       - g++-6
       - g++-7
-      - libboost1.55-all-dev
+      - libboost-filesystem1.55
+      - libboost-python1.55
+      - libboost-regex1.55
+      - libboost-system1.55
+      - libboost-thread1.55
       - libgif-dev
       - libtiff4-dev
       - libopenjpeg-dev
@@ -33,6 +37,7 @@ addons:
       - libavformat-dev
       - libswscale-dev
       - libavutil-dev
+      - locales
       # - qtbase5-dev   # FIXME: enable Qt5 on Linux
       # - bzip2
       # - libtinyxml-dev
@@ -136,7 +141,7 @@ matrix:
     # test with C++14, gcc 6, latest SIMD flags supported by TravisCI VMs
       - os: linux
         compiler: gcc
-        env: WHICHGCC=6 USE_CPP=14 USE_SIMD=avx,f16c
+        env: WHICHGCC=6 USE_CPP=14 USE_SIMD=sse4.2
     # test with C++14, gcc 7, latest SIMD flags supported by TravisCI VMs
       - os: linux
         compiler: gcc
@@ -149,12 +154,9 @@ matrix:
       #   compiler: gcc
       #   env: LINKSTATIC=1 USE_FFMPEG=0 USE_OCIO=0 USE_OPENCV=0 MY_CMAKE_FLAGS="-DUSE_fPIC=1"
       - os: osx
+        osx_image: xcode7.3
         compiler: clang
         env: LINKSTATIC=1 USE_FFMPEG=0 USE_OCIO=0 USE_OPENCV=0
-    # Linux only: test gcc 5 and simultaneously, test SSE4.2
-      - os: linux
-        compiler: gcc
-        env: WHICHGCC=5 USE_SIMD=sse4.2
     # Build with sanitizers
       - os: linux
         compiler: gcc
