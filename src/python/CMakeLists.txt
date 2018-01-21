@@ -32,6 +32,7 @@ endif ()
 
 if (APPLE)
 #    set (PYTHON_LIBRARIES /opt/local/lib)
+    add_definitions ("-DBOOST_PYTHON_USE_GCC_SYMBOL_VISIBILITY")
 endif ()
 
 if (NOT DEFINED PYTHON_SITE_DIR)
