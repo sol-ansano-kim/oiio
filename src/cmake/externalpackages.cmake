@@ -9,7 +9,6 @@ if (NOT VERBOSE)
     set (Field3D_FIND_QUIETLY true)
     set (Freetype_FIND_QUIETLY true)
     set (GIF_FIND_QUIETLY true)
-    set (GLEW_FIND_QUIETLY true)
     set (HDF5_FIND_QUIETLY true)
     set (IlmBase_FIND_QUIETLY true)
     set (JPEG_FIND_QUIETLY true)
@@ -211,32 +210,6 @@ endif ()
 # end Qt setup
 ###########################################################################
 
-###########################################################################
-# GL Extension Wrangler library setup
-
-if (USE_OPENGL)
-    set (GLEW_VERSION 1.5.1)
-    find_library (GLEW_LIBRARIES
-                  NAMES GLEW glew32)
-    find_path (GLEW_INCLUDES
-               NAMES glew.h
-               PATH_SUFFIXES GL)
-    if (GLEW_INCLUDES AND GLEW_LIBRARIES)
-        set (GLEW_FOUND TRUE)
-        if (NOT GLEW_FIND_QUIETLY)
-            message (STATUS "GLEW includes = ${GLEW_INCLUDES}")
-            message (STATUS "GLEW library = ${GLEW_LIBRARIES}")
-        endif ()
-    else ()
-        message (STATUS "GLEW not found")
-    endif ()
-else ()
-    message (STATUS "USE_OPENGL=0, skipping components that need OpenGL")
-endif (USE_OPENGL)
-
-# end GL Extension Wrangler library setup
-###########################################################################
-
 
 ###########################################################################
 # BZIP2 - used by ffmped and freetype
@@ -373,19 +346,7 @@ if (USE_LIBRAW)
     if (NOT LibRaw_FIND_QUIETLY)
         message (STATUS "Looking for LibRaw with ${LIBRAW_PATH}")
     endif ()
-    if (LIBRAW_PATH)
-        # Customized path requested, don't use find_package
-        FIND_PATH(LibRaw_INCLUDE_DIR libraw/libraw.h
-                  PATHS "${LIBRAW_PATH}/include"
-                  NO_DEFAULT_PATH
-                 )
-        FIND_LIBRARY(LibRaw_r_LIBRARIES NAMES raw_r
-                     PATHS "${LIBRAW_PATH}/lib"
-                     NO_DEFAULT_PATH
-                    )
-    else ()
-    	find_package (LibRaw)
-    endif ()
+    find_package (LibRaw)
     if (LibRaw_r_LIBRARIES AND LibRaw_INCLUDE_DIR)
         set (LIBRAW_FOUND TRUE)
         include_directories (${LibRaw_INCLUDE_DIR})
@@ -539,7 +500,7 @@ endif()
 ###########################################################################
 # DCMTK
 if (USE_DICOM)
-    find_package (DCMTK)
+    find_package (DCMTK 3.6.1)
     if (NOT DCMTK_FOUND)
         set (DCMTK_INCLUDE_DIR "")
         set (DCMTK_LIBRARIES "")

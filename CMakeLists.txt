@@ -1,13 +1,13 @@
 cmake_minimum_required (VERSION 3.2.2)
 cmake_policy (SET CMP0048 NEW)  # Allow VERSION specifier in project()
 project (OpenImageIO
-         VERSION 1.8.7
+         VERSION 1.8.10
          LANGUAGES CXX C)
 set (PROJ_NAME OIIO)    # short name, caps
 string (TOLOWER ${PROJ_NAME} PROJ_NAME_LOWER)  # short name lower case
 set (PROJECT_VERSION_RELEASE_TYPE "")   # "dev", "betaX", "RCY", ""
 set (${PROJECT_NAME}_VERSION_RELEASE_TYPE ${PROJECT_VERSION_RELEASE_TYPE})
-set (PROJECT_COPYRIGHTYEARS "2008-2017")
+set (PROJECT_COPYRIGHTYEARS "2008-2018")
 set (PROJECT_AUTHORS "Larry Gritz, et al")
 set (PROJECT_URL "http://openimageio.org")
 
@@ -70,7 +70,6 @@ option (OIIO_BUILD_TOOLS "Build the command-line tools" ON)
 option (OIIO_BUILD_TESTS "Build the unit tests" ON)
 option (USE_OPENGL "Include OpenGL support" ON)
 option (USE_QT "Include Qt support" ON)
-option (FORCE_OPENGL_1 "Force iv to use OpenGL's fixed pipeline")
 option (USE_PYTHON "Build the Python bindings" ON)
 set (PYTHON_VERSION "2.7" CACHE STRING "Target version of python to find")
 option (PYLIB_INCLUDE_SONAME "If ON, soname/soversion will be set for Python module library")
@@ -262,7 +261,7 @@ oiio_add_tests (
 # We also exclude these tests if this is a sanitizer build on Linux,
 # because the Python interpreter itself won't be linked with the right asan
 # libraries to run correctly.
-if (USE_PYTHON AND boost_PYTHON_FOUND AND NOT BUILD_OIIOUTIL_ONLY)
+if (USE_PYTHON AND NOT BUILD_OIIOUTIL_ONLY)
     if (NOT SANITIZE_ON_LINUX)
         oiio_add_tests (
                 python-typedesc python-imagespec python-roi python-deep
@@ -311,6 +310,11 @@ oiio_add_tests (jpeg2000
 
 oiio_add_tests (pnm
     IMAGEDIR oiio-images/pnm
+    URL "Recent checkout of oiio-images")
+
+oiio_add_tests (raw
+    FOUNDVAR LIBRAW_FOUND
+    IMAGEDIR oiio-images/raw
     URL "Recent checkout of oiio-images")
 
 oiio_add_tests (targa-tgautils
