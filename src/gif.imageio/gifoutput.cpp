@@ -35,8 +35,8 @@
 #include <cstdlib>
 #include <vector>
 
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/platform.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/platform.h>
 
 namespace {
 #define GIF_TEMP_MALLOC malloc
@@ -49,7 +49,7 @@ namespace {
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
-class GIFOutput : public ImageOutput {
+class GIFOutput final : public ImageOutput {
  public:
     GIFOutput () { init(); }
     virtual ~GIFOutput () { close(); }

@@ -29,7 +29,7 @@
 */
 
 extern "C" { // ffmpeg is a C api
-#include <errno.h>
+#include <cerrno>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
@@ -126,13 +126,13 @@ inline int receive_frame(AVCodecContext *avctx, AVFrame *picture,
 
 #include <boost/thread/once.hpp>
 
-#include "OpenImageIO/imageio.h"
-#include  <iostream>
+#include <OpenImageIO/imageio.h>
+#include <iostream>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
 
-class FFmpegInput : public ImageInput {
+class FFmpegInput final : public ImageInput {
 public:
     FFmpegInput ();
     virtual ~FFmpegInput();
@@ -431,7 +431,8 @@ FFmpegInput::open (const std::string &name, ImageSpec &spec)
     while ((tag = av_dict_get (m_format_context->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
         m_spec.attribute (tag->key, tag->value);
     }
-    m_spec.attribute ("FramesPerSecond", m_frame_rate.num / static_cast<float> (m_frame_rate.den));
+    int rat[2] = { m_frame_rate.num, m_frame_rate.den };
+    m_spec.attribute ("FramesPerSecond", TypeRational, &rat);
     m_spec.attribute ("oiio:Movie", true);
     m_spec.attribute ("oiio:BitsPerSample", m_codec_context->bits_per_raw_sample);
     m_nsubimages = m_frames;

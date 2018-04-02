@@ -18,6 +18,24 @@ to the 'lib' directory where OpenImageIO is installed, or else it will
 not be able to find the plugins.
 
 
+Dependencies
+------------
+
+NEW or CHANGED dependencies since the last major release are **bold**.
+
+### Required dependencies
+
+ * **C++11** (should also build with C++14 and C++17)
+ * **Compilers**: gcc 4.8.2 - gcc 7, clang 3.3 - 5.0, MSVS 2013 - 2017, icc version 13 or higher
+ * **Boost >= 1.53** (tested up through 1.65)
+ * **CMake >= 3.2.2** (tested up through 3.9)
+ * **OpenEXR >= 2.0** (recommended: 2.2)
+
+### Optional dependencies
+ * **Qt >= 5.6**  (Only needed if you want the `iv` viewer.)
+ * Python >= 2.7
+
+
 
 Building OpenImageIO on Linux or OS X
 -------------------------------------
@@ -73,8 +91,8 @@ Make targets you should know about:
 
 Additionally, a few helpful modifiers alter some build-time options:
 
-|  Target             |  Command                                           |
-| :------------------ | -------------------------------------------------- |
+|  Target                   |  Command                                           |
+| :------------------------ | -------------------------------------------------- |
 | make VERBOSE=1 ...        |  Show all compilation commands
 | make STOP_ON_WARNING=0    |  Do not stop building if compiler warns
 | make EMBEDPLUGINS=0 ...   |  Don't compile the plugins into libOpenImageIO
@@ -86,7 +104,7 @@ Additionally, a few helpful modifiers alter some build-time options:
 | make BUILDSTATIC=1 ...    |  Build static library instead of shared
 | make LINKSTATIC=1 ...     |  Link with static external libraries when possible
 | make SOVERSION=nn ...     |  Include the specifed major version number in the shared object metadata
-|  make NAMESPACE=name      |   Wrap everything in another namespace
+| make NAMESPACE=name       |   Wrap everything in another namespace
 
 The command 'make help' will list all possible options.
 
@@ -157,13 +175,13 @@ http://www.openimageio.org/external.zip
 4. Also, just to be safe, add QTDIR to the environment variables. It
    should point to directory where you unpacked Qt.
 
-5. Download precompiled BOOST 1.42 or newer libraries from
+5. Download precompiled BOOST 1.53 or newer libraries from
    http://www.boostpro.com/download
 
    Install it on your system. Choose two versions: Multithread Debug, DLL
    and Multithread, DLL for Your Visual Studio version.
 
-6. Download precompiled BOOST 1.42 or newer libraries from here (unfficial
+6. Download precompiled BOOST 1.53 or newer libraries from here (unfficial
    mirror) or from here (unofficial mirror, registration required). Install
    it on Your system. Choose two versions: Multithread Debug, DLL and
    Multithread, DLL for Your Visual Studio version.

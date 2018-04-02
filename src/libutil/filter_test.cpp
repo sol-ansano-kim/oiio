@@ -34,12 +34,13 @@
 #include <OpenImageIO/strutil.h>
 #include <OpenImageIO/typedesc.h>
 #include <OpenImageIO/timer.h>
+#include <OpenImageIO/benchmark.h>
 #include <OpenImageIO/unittest.h>
 #include <OpenImageIO/imagebufalgo_util.h>
 #include <OpenImageIO/argparse.h>
 #include <OpenImageIO/filter.h>
 
-OIIO_NAMESPACE_USING;
+using namespace OIIO;
 
 static int iterations = 10;
 static int ntrials = 5;
@@ -99,7 +100,7 @@ void time_filter (Filter1D *f, const FilterDesc *filtdesc, size_t n)
 int
 main (int argc, char *argv[])
 {
-#if !defined(NDEBUG) || defined(OIIO_CI) || defined(OIIO_CODECOV)
+#if !defined(NDEBUG) || defined(OIIO_CI) || defined(OIIO_CODE_COVERAGE)
     // For the sake of test time, reduce the default iterations for DEBUG,
     // CI, and code coverage builds. Explicit use of --iters or --trials
     // will override this, since it comes before the getargs() call.

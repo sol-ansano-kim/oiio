@@ -34,6 +34,7 @@
 #include <cmath>
 #include <ctime>
 #include <iostream>
+#include <memory>
 
 #include <tiffio.h>
 
@@ -45,15 +46,13 @@
 #define EXIFTAG_IMAGEHISTORY 37395
 #endif
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/sysutil.h"
-#include "OpenImageIO/timer.h"
-#include "OpenImageIO/fmath.h"
-
-#include <boost/scoped_array.hpp>
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/sysutil.h>
+#include <OpenImageIO/timer.h>
+#include <OpenImageIO/fmath.h>
 
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -69,7 +68,7 @@ namespace
     static int MIN_SCANLINES_OR_TILES_PER_CHECKPOINT = 64;
 }
 
-class TIFFOutput : public ImageOutput {
+class TIFFOutput final : public ImageOutput {
 public:
     TIFFOutput ();
     virtual ~TIFFOutput ();
@@ -300,11 +299,6 @@ TIFFOutput::open (const std::string &name, const ImageSpec &userspec,
         return false;
     }
 
-    // N.B. Clamp position at 0... TIFF is internally incapable of having
-    // negative origin.
-    TIFFSetField (m_tif, TIFFTAG_XPOSITION, (float)std::max (0, m_spec.x));
-    TIFFSetField (m_tif, TIFFTAG_YPOSITION, (float)std::max (0, m_spec.y));
-
     TIFFSetField (m_tif, TIFFTAG_IMAGEWIDTH, m_spec.width);
     TIFFSetField (m_tif, TIFFTAG_IMAGELENGTH, m_spec.height);
 
@@ -498,7 +492,7 @@ TIFFOutput::open (const std::string &name, const ImageSpec &userspec,
         TIFFSetField (m_tif, TIFFTAG_EXTRASAMPLES, e, &extra[0]);
     }
 
-    ImageIOParameter *param;
+    ParamValue *param;
     const char *str = NULL;
 
     // Did the user request separate planar configuration?
@@ -529,14 +523,14 @@ TIFFOutput::open (const std::string &name, const ImageSpec &userspec,
         time (&now);
         struct tm mytm;
         Sysutil::get_local_time (&now, &mytm);
-        std::string date = Strutil::format ("%4d:%02d:%02d %2d:%02d:%02d",
+        std::string date = Strutil::format ("%4d:%02d:%02d %02d:%02d:%02d",
                                mytm.tm_year+1900, mytm.tm_mon+1, mytm.tm_mday,
                                mytm.tm_hour, mytm.tm_min, mytm.tm_sec);
         m_spec.attribute ("DateTime", date);
     }
 
     // Write ICC profile, if we have anything
-    const ImageIOParameter* icc_profile_parameter = m_spec.find_attribute(ICC_PROFILE_ATTR);
+    const ParamValue* icc_profile_parameter = m_spec.find_attribute(ICC_PROFILE_ATTR);
     if (icc_profile_parameter != NULL) {
         unsigned char *icc_profile = (unsigned char*)icc_profile_parameter->data();
         uint32 length = icc_profile_parameter->type().size();
@@ -551,6 +545,11 @@ TIFFOutput::open (const std::string &name, const ImageSpec &userspec,
     // that contradicts them.
     float X_density = m_spec.get_float_attribute ("XResolution", 1.0f);
     float Y_density = m_spec.get_float_attribute ("YResolution", 1.0f);
+    // Eliminate nonsensical densities
+    if (X_density <= 0.0f)
+        X_density = 1.0f;
+    if (Y_density <= 0.0f)
+        Y_density = 1.0f;
     float aspect = m_spec.get_float_attribute ("PixelAspectRatio", 1.0f);
     if (X_density < 1.0f || Y_density < 1.0f || aspect*X_density != Y_density) {
         if (X_density < 1.0f || Y_density < 1.0f) {
@@ -559,6 +558,21 @@ TIFFOutput::open (const std::string &name, const ImageSpec &userspec,
         }
         m_spec.attribute ("XResolution", X_density);
         m_spec.attribute ("YResolution", X_density * aspect);
+    }
+
+    if (m_spec.x || m_spec.y) {
+        // The TIFF spec implies that the XPOSITION & YPOSITION are in the
+        // resolution units. For a long time we just assumed they were whole
+        // pixels. Beware! For the sake of old OIIO or other readers that
+        // assume pixel units, it may be smart to not have non-1.0
+        // XRESOLUTION or YRESOLUTION if you have a non-zero origin.
+        //
+        // TIFF is internally incapable of having negative origin, so we
+        // have to clamp at 0.
+        float x = m_spec.x / X_density;
+        float y = m_spec.y / Y_density;
+        TIFFSetField (m_tif, TIFFTAG_XPOSITION, std::max (0.0f, x));
+        TIFFSetField (m_tif, TIFFTAG_YPOSITION, std::max (0.0f, y));
     }
 
     // Deal with all other params
@@ -678,11 +692,11 @@ TIFFOutput::put_parameter (const std::string &name, TypeDesc type,
         TIFFSetField (m_tif, TIFFTAG_PIXAR_WRAPMODES, *(char**)data);
         return true;
     }
-    if (Strutil::iequals(name, "worldtocamera") && type == TypeDesc::TypeMatrix) {
+    if (Strutil::iequals(name, "worldtocamera") && type == TypeMatrix) {
         TIFFSetField (m_tif, TIFFTAG_PIXAR_MATRIX_WORLDTOCAMERA, data);
         return true;
     }
-    if (Strutil::iequals(name, "worldtoscreen") && type == TypeDesc::TypeMatrix) {
+    if (Strutil::iequals(name, "worldtoscreen") && type == TypeMatrix) {
         TIFFSetField (m_tif, TIFFTAG_PIXAR_MATRIX_WORLDTOSCREEN, data);
         return true;
     }
@@ -717,7 +731,7 @@ TIFFOutput::write_exif_data ()
     // First, see if we have any Exif data at all
     bool any_exif = false;
     for (size_t i = 0, e = m_spec.extra_attribs.size(); i < e; ++i) {
-        const ImageIOParameter &p (m_spec.extra_attribs[i]);
+        const ParamValue &p (m_spec.extra_attribs[i]);
         int tag, tifftype, count;
         if (exif_tag_lookup (p.name(), tag, tifftype, count) &&
                 tifftype != TIFF_NOTYPE) {
@@ -751,7 +765,7 @@ TIFFOutput::write_exif_data ()
     }
 
     for (size_t i = 0, e = m_spec.extra_attribs.size(); i < e; ++i) {
-        const ImageIOParameter &p (m_spec.extra_attribs[i]);
+        const ParamValue &p (m_spec.extra_attribs[i]);
         int tag, tifftype, count;
         if (exif_tag_lookup (p.name(), tag, tifftype, count) &&
                 tifftype != TIFF_NOTYPE) {
@@ -1050,7 +1064,7 @@ TIFFOutput::write_tile (int x, int y, int z,
         imagesize_t plane_bytes = tile_pixels * m_spec.format.size();
         DASSERT (plane_bytes*m_spec.nchannels == m_spec.tile_bytes());
 
-        boost::scoped_array<char> separate_heap;
+        std::unique_ptr<char[]> separate_heap;
         char *separate = NULL;
         imagesize_t separate_size = plane_bytes * m_spec.nchannels;
         if (separate_size <= (1<<16))

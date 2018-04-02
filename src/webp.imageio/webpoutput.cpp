@@ -29,15 +29,15 @@
 */
 #include <cstdio>
 #include <webp/encode.h>
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/imageio.h"
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/imageio.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
 namespace webp_pvt {
 
 
-class WebpOutput : public ImageOutput
+class WebpOutput final : public ImageOutput
 {
  public:
     WebpOutput(){ init(); }
@@ -142,7 +142,7 @@ WebpOutput::open (const std::string &name, const ImageSpec &spec,
 
     m_webp_config.method = 6;
     int compression_quality = 100;
-    const ImageIOParameter *qual = m_spec.find_attribute ("CompressionQuality",
+    const ParamValue *qual = m_spec.find_attribute ("CompressionQuality",
                                                           TypeDesc::INT);
     if (qual)
     {

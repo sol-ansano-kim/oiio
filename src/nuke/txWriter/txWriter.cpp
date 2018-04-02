@@ -4,9 +4,9 @@
 #include "DDImage/Thread.h"
 #include "DDImage/Row.h"
 
-#include "OpenImageIO/filter.h"
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagebufalgo.h"
+#include <OpenImageIO/filter.h>
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
 
 
 /*
@@ -27,7 +27,7 @@ namespace TxWriterNS
 {
 
 
-OIIO_NAMESPACE_USING
+using namespace OIIO;
 
 // Limit the available output datatypes (for now, at least).
 static const TypeDesc::BASETYPE oiioBitDepths[] = {TypeDesc::INT8,

@@ -38,19 +38,19 @@
 
 #include <OpenEXR/ImathMatrix.h>
 
-#include "OpenImageIO/argparse.h"
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/timer.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagebufalgo.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/filter.h"
+#include <OpenImageIO/argparse.h>
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/timer.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
+#include <OpenImageIO/thread.h>
+#include <OpenImageIO/filter.h>
 
-OIIO_NAMESPACE_USING
+using namespace OIIO;
 
 
 // # FIXME: Refactor all statics into a struct
@@ -131,7 +131,7 @@ static int
 parse_files (int argc, const char *argv[])
 {
     for (int i = 0;  i < argc;  i++)
-        filenames.push_back (argv[i]);
+        filenames.emplace_back(argv[i]);
     return 0;
 }
 
@@ -209,6 +209,7 @@ getargs (int argc, char *argv[], ImageSpec &configspec)
     float sharpen = 0.0f;
     std::string incolorspace;
     std::string outcolorspace;
+    std::string colorconfigname;
     std::string channelnames;
     std::vector<std::string> string_attrib_names, string_attrib_values;
     std::vector<std::string> any_attrib_names, any_attrib_values;
@@ -276,6 +277,7 @@ getargs (int argc, char *argv[], ImageSpec &configspec)
                   "--lightprobe", &lightprobemode, "Create lat/long environment map from a light probe",
 //                  "--envcube", &envcubemode, "Create cubic env map (file order: px, nx, py, ny, pz, nz) (UNIMP)",
                   "<SEPARATOR>", colortitle_help_string().c_str(),
+                  "--colorconfig %s", &colorconfigname, "Explicitly specify an OCIO configuration file",
                   "--colorconvert %s %s", &incolorspace, &outcolorspace,
                           colorconvert_help_string().c_str(),
                   "--unpremult", &unpremult, "Unpremultiply before color conversion, then premultiply "
@@ -355,9 +357,9 @@ getargs (int argc, char *argv[], ImageSpec &configspec)
         configspec.attribute ("fovcot", fovcot);
     configspec.attribute ("planarconfig", separate ? "separate" : "contig");
     if (Mcam != Imath::M44f(0.0f))
-        configspec.attribute ("worldtocamera", TypeDesc::TypeMatrix, &Mcam);
+        configspec.attribute ("worldtocamera", TypeMatrix, &Mcam);
     if (Mscr != Imath::M44f(0.0f))
-        configspec.attribute ("worldtoscreen", TypeDesc::TypeMatrix, &Mscr);
+        configspec.attribute ("worldtoscreen", TypeMatrix, &Mscr);
     std::string wrapmodes = (swrap.size() ? swrap : wrap) + ',' + 
                             (twrap.size() ? twrap : wrap);
     configspec.attribute ("wrapmodes", wrapmodes);
@@ -374,6 +376,7 @@ getargs (int argc, char *argv[], ImageSpec &configspec)
     configspec.attribute ("maketx:unpremult", unpremult);
     configspec.attribute ("maketx:incolorspace", incolorspace);
     configspec.attribute ("maketx:outcolorspace", outcolorspace);
+    configspec.attribute ("maketx:colorconfig", colorconfigname);
     configspec.attribute ("maketx:checknan", checknan);
     configspec.attribute ("maketx:fixnan", fixnan);
     configspec.attribute ("maketx:set_full_to_pixels", set_full_to_pixels);
@@ -442,6 +445,10 @@ int
 main (int argc, char *argv[])
 {
     Timer alltimer;
+
+    // Globally force classic "C" locale, and turn off all formatting
+    // internationalization, for the entire maketx application.
+    std::locale::global (std::locale::classic());
 
     ImageSpec configspec;
     Filesystem::convert_native_arguments (argc, (const char **)argv);

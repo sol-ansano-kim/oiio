@@ -201,14 +201,23 @@ The \emph{imagename} may be one of: {\cf TOP} (the top or current image),
 {\cf IMG[}\emph{i}{\cf ]} describing the \emph{i}{\textsuperscript{th}} image
 on the stack (thus {\cf TOP} is a synonym for {\cf IMG[0]} , the next image
 on the stack is {\cf IMG[1]}, etc.), or {\cf IMG["}\emph{name}{\cf "]} to
-denote an image named by filename or by label name.
+denote an image named by filename or by label name. Remember that the
+positions on the stack (including TOP) refer to \emph{at that moment},
+with successive commands changing the contents of the top image.
 
-The \emph{metadata} may be the name of any standard metadata of the
-specified image (e.g., \qkw{ImageDescription}, or \qkw{width}), or one of
-the following special names: \qkw{filename}, \qkw{file_extension},
-\qkw{file_noextension}, \qkw{geom} (giving the pixel data size in the form
-\qkw{640x480+0+0}), or \qkw{full_geom} (similar, for the ``full'' or
-``display'' size).
+The \emph{metadata} may be any of:
+
+\begin{itemize}
+\item the name of any standard metadata of the
+specified image (e.g., {\cf ImageDescription}, or {\cf width})
+\item {\cf filename} : the name of the file (e.g., \qkw{foo.tif})
+\item {\cf file_extension} : the extension of the file (e.g., \qkw{tif})
+\item {\cf geom} : the pixel data size in the form \qkw{640x480+0+0})
+\item {\cf full_geom} : the ``full'' or ``display'' size)
+\item {\cf MINCOLOR} : the minimum value in each channel(channels are comma-separated)
+\item {\cf MAXCOLOR} : the maximum value in each channel(channels are comma-separated)
+\item {\cf AVGCOLOR} : the average pixel value of the image (channels are comma-separated)
+\end{itemize}
 
 \item[{Arithmetic}] Sub-expressions may be joined by {\cf +}, {\cf -},
 {\cf *}, or {\cf /} for arithmetic operations. Parentheses are supported,
@@ -256,6 +265,12 @@ To print the name, format, resolution, and data type of an image
 
 \begin{code}
     oiiotool --info -v *.tif
+\end{code}
+
+\noindent or
+
+\begin{code}
+    oiiotool --info:verbose=1 *.tif
 \end{code}
 
 \noindent To print info about all subimages and/or MIP-map levels of each
@@ -556,10 +571,11 @@ yielding RGB only:
     oiiotool rgba.tif --ch R=B,G,B=R,A -o bgra.tif
 \end{code}
 
-\noindent Extract just the named channels from a complicted many-channel
-image, and add an alpha channel that is 1 everywhere:
+\noindent Extract just the named channels from a many-channel image,
+as efficiently as possible (avoiding memory and I/O for the unused
+channels):
 \begin{code}
-    oiiotool allmyaovs.exr --ch spec.R,spec.G,spec.B,A=1 -o spec.exr
+    oiiotool -i:ch=R,G,B manychannels.exr -o rgb.exr
 \end{code}
 
 \noindent Add an alpha channel to an RGB image, setting it to 1.0 everywhere,
@@ -642,6 +658,17 @@ of time, and will always put the text 30 pixels from the bottom of the image
 without requiring you to know the resolution.
 
 
+\subsection*{Contrast enhancement: stretch pixel value range to exactly fit [0-1]}
+\noindent This command reads a file, subtracts the minimum pixel value and
+then divides by the (new) maximum value, per channel, thus expanding its
+pixel values to the full $[0-1]$ range:
+\begin{code}
+    oiiotool input.tif -subc {TOP.MINCOLOR} -divc {TOP.MAXCOLOR} -o out.tif
+\end{code}
+\noindent Note that this is a naive way to improve contrast and because
+each channel is handled independently, it may result in color hue shifts.
+
+
 \subsection{Split a multi-image file into separate files}
 \noindent Take a multi-image TIFF file, split into its constituent subimages
 and output each one to a different file, with names \qkw{sub0001.tif},
@@ -698,6 +725,16 @@ Prints information about each input image as it is read.  If verbose mode
 is turned on ({\cf -v}), all the metadata for the image is printed.
 If verbose mode is not turned on, only the resolution and data format
 are printed.
+
+\noindent Optional appended arguments include:
+
+\begin{tabular}{p{10pt} p{0.75in} p{3.75in}}
+  & {\cf format=}\emph{name} & The format may be one of: {\cf text} (default)
+      for readable text, or {\cf xml} for an XML description of the image
+      metadata. \\
+  & {\cf verbose=}\emph{1} & If nonzero, the information will contain all
+      metadata, not just the minimal amount.
+\end{tabular}
 \apiend
 
 \apiitem{{\ce --echo} {\rm \emph{message}}}
@@ -946,6 +983,16 @@ options that control the reading of just that one file.
 {\cf info=}\emph{int} & Print info about this file (even if the global
      {\cf --info} was not used) if nonzero. If the value is 2, print full
      verbose info (like {\cf --info -v}). \\
+{\cf infoformat=}\emph{name} & When printing info, the format may be one of:
+      {\cf text} (default) for readable text, or {\cf xml} for an XML
+      description of the image metadata. \\
+{\cf type=}\emph{name} & Upon reading, convert the pixel data to the named
+      type. This can override the default behavior of internally storing
+      whatever type is the most precise one found in the file.\\
+{\cf ch=}\emph{name,...} & Causes the input to read only the specified
+      channels. This is equivalent to following the input with a {\cf --ch}
+      command, except that by integrating into the {\cf -i}, it potentially
+      can avoid the I/O of the unneeded channels.\\
 \end{tabular}
 \apiend
 
@@ -987,6 +1034,11 @@ The rules for deducing color spaces are as follows, in order of priority:
   output color space (since JPEG requires sRGB), but still this only
   occurs if the filename does not specify something different.
 \end{enumerate}
+
+If the implied color transformation is unknown (for example, involving
+a color space that is not recognized), a warning will be printed, but it
+the rest of {\cf oiiotool} processing will proceed (but without having
+transformed the colors of the image).
 
 \noindent Example:
 
@@ -1037,12 +1089,10 @@ bypassing the conversion to {\cf float}.
 \apiend
 
 \apiitem{\ce --cache {\rm \emph{size}}}
-\NEW % 1.7
 Set the underlying \ImageCache size (in MB). See Section~\ref{imagecacheattr:autotile}.
 \apiend
 
 \apiitem{\ce --autotile {\rm \emph{tilesize}}}
-\NEW % 1.7
 For the underlying \ImageCache, turn on auto-tiling with the given tile
 size. Setting \emph{tilesize} to 0 turns off auto-tiling. If auto-tile
 is turned on, The \ImageCache \qkw{autoscanline} feature will also be enabled.
@@ -1050,7 +1100,6 @@ See Section~\ref{imagecacheattr:autotile} for details.
 \apiend
 
 \apiitem{\ce --iconfig {\rm \emph{name value}}}
-\NEW % 1.7
 Sets configuration metadata that will apply to the next input file read.
 
 \noindent Optional appended arguments include:
@@ -1095,12 +1144,14 @@ current image from the image stack, it merely saves a copy of it.
 {\cf autocrop=}\emph{int} & Enable or disable autocrop for
      this output image. \\
 {\cf autotrim=}\emph{int} & Enable or disable {\cf --autotrim} for
-     this output image. \index{autotrim} \\
+     this output image. \index{autotrim} \\[0.5ex]
 {\cf separate=}\emph{int} & \\
 {\cf contig=}\emph{int} & Set separate or contiguous planar configuration
-    for this output. \\
+    for this output. \\[0.5ex]
 {\cf\small fileformatname=}\emph{string} & Specify the desired output file
-  format, overriding any guess based on file name extension. \\
+  format, overriding any guess based on file name extension. \\[0.5ex]
+{\cf scanline=}{int} & If nonzero, force scanline output. \\
+{\cf tile=}\emph{int}{\cf x}\emph{int} &  Force tiling with given size. \\[0.5ex]
 {\cf all=}\emph{n} & Output all images currently on the stack using a
       pattern. See further explanation below.
 \end{tabular}
@@ -1111,7 +1162,6 @@ filename argument used as a pattern assumed to contain a {\cf \%d},
 which will be substituted with the index of the image (beginning with
 \emph{n}). For example, to take a multi-image TIFF and extract all the
 subimages and save them as separate files,
-\NEW % 1.7
 
 \begin{code}
     oiiotool multi.tif -sisplit -o:all=1 sub%04d.tif
@@ -1310,7 +1360,8 @@ all subimages or MIPmap levels of the current top image.  Otherwise,
 they only apply to the highest-resolution MIPmap level of the first
 subimage of the current top image.
 
-\apiitem{\ce --attrib {\rm \emph{name value}}}
+\apiitem{\ce --attrib {\rm \emph{name value}} \\
+\ce --sattrib {\rm \emph{name value}}}
 Adds or replaces metadata with the given \emph{name} to have the
 specified \emph{value}.
 
@@ -1328,13 +1379,14 @@ be saved as {\cf int} metadata; if it also contains a decimal point, it
 will be saved as {\cf float} metadata; otherwise, it will be saved as
 a {\cf string} metadata.
 
+\noindent The {\cf --sattrib} command is equivalent to {\cf --attrib:type=string}.
 
 \noindent Examples:
 
 \begin{code}
-    oiiotool in.jpg --attrib "IPTC:City" "Berkeley" out.jpg
+    oiiotool in.jpg --attrib "IPTC:City" "Berkeley" -o out.jpg
 
-    oiiotool in.jpg --attrib:type=string "Name" "0" out.jpg
+    oiiotool in.jpg --attrib:type=string "Name" "0" -o out.jpg
 
     oiiotool in.exr --attrib:type=matrix worldtocam \
             "1,0,0,0,0,1,0,0,0,0,1,0,2.3,2.1,0,1" -o out.exr
@@ -1342,15 +1394,6 @@ a {\cf string} metadata.
     oiiotool in.exr --attrib:type=timecode smpte:TimeCode "11:34:04:00" \
             -o out.exr
 \end{code}
-\apiend
-
-\apiitem{\ce --sattrib {\rm \emph{name value}}}
-Adds or replaces metadata with the given \emph{name} to have the
-specified \emph{value}, forcing it to be interpreted as a {\cf string}.
-This is helpful if you want to set a {\cf string} metadata to a value
-that the {\cf --attrib} command would normally interpret as a number.
-
-\noindent Note also that {\cf --sattrib} is equivalent to {\cf --attrib:type=string}.
 \apiend
 
 \apiitem{\ce --caption {\rm \emph{text}}}
@@ -1388,6 +1431,25 @@ When set, this prevents the normal adjustment of \qkw{Software} and
 When set, this edits the command line inserted in the \qkw{Software} and
 \qkw{ImageHistory} metadata to omit any verbose {\cf --attrib} and
 {\cf --sattrib} commands.
+\apiend
+
+\apiitem{\ce --eraseattrib {\rm \emph{pattern}}}
+\NEW % 1.8
+Removes any metadata whose name matches the regular expression \emph{pattern}.
+The pattern will be case insensitive.
+
+\noindent Examples:
+
+\begin{code}
+    # Remove one item only
+    oiiotool in.jpg --eraseattrib "smpte:TimeCode" -o no_timecode.jpg
+
+    # Remove all GPS tags
+    oiiotool in.jpg --eraseattrib "GPS:.*" -o no_gps_metadata.jpg
+
+    # Remove all metadata
+    oiiotool in.exr --eraseattrib ".*" -o no_metadata.exr
+\end{code}
 \apiend
 
 \apiitem{\ce --orientation {\rm \emph{orient}}}
@@ -1530,7 +1592,6 @@ be omitted.
 Replaces the top two images on the stack with a new image comprised of
 the channels of both images appended together.
 \apiend
-
 
 
 \section{\oiiotool commands that adjust the image stack}
@@ -1910,6 +1971,32 @@ weight of each channel in the sum.
 \includegraphics[width=1.5in]{figures/luma.jpg} \\
 \apiend
 
+\apiitem{\ce --colormap {\rm \emph{mapname}}}
+\NEW % 1.8
+Creates an RGB color map based on the luminance of the input image. The
+{\cf mapname} may be one of:  \qkw{blue-red}, \qkw{spectrum}, and \qkw{heat}.
+Or, {\cf mapname} may also be a comma-separated list of RGB triples, to form
+a custom color map curve.
+
+\noindent Example:
+\begin{code}
+    oiiotool tahoe.jpg --colormap blue-red -o blue-red.jpg
+    oiiotool tahoe.jpg --colormap spectrum -o spectrum.jpg
+    oiiotool tahoe.jpg --colormap heat -o heat.jpg
+    oiiotool tahoe.jpg --colormap .25,.25,.25,0,.5,0,1,0,0 -o custom.jpg
+\end{code}
+
+\noindent \begin{tabular}{lllll}
+\includegraphics[width=0.9in]{figures/tahoe-small.jpg} &
+\includegraphics[width=0.9in]{figures/colormap-blue-red.jpg} &
+\includegraphics[width=0.9in]{figures/colormap-spectrum.jpg} &
+\includegraphics[width=0.9in]{figures/colormap-heat.jpg} &
+\includegraphics[width=0.9in]{figures/colormap-custom.jpg} \\
+original & red-blue & spectrum & heat & custom values \\
+\end{tabular}
+\apiend
+
+
 \apiitem{\ce --paste {\rm \emph{location}}}
 Takes two images -- the first is the ``foreground'' and the second is
 the ``background'' -- and uses the pixels of the foreground to replace
@@ -2154,7 +2241,8 @@ The size is in the form
 
 \apiitem{\ce --resample {\rm \emph{size}}}
 Replace the current image with a new image that is resampled to the
-given pixel data resolution rapidly, but at a low quality, by simply
+given pixel data resolution rapidly, but at a low quality, either by simple
+bilinear interpolation or by just
 copying the ``closest'' pixel.  The \emph{size} is in the form
 \\ \spc\spc \emph{width}\,{\cf x}\,\emph{height}{\cf [+-]}\emph{xoffset}{\cf
   [+-]}\emph{yoffset}
@@ -2164,6 +2252,15 @@ copying the ``closest'' pixel.  The \emph{size} is in the form
 
 \noindent if {\cf width} or {\cf height} is 0, that dimension will be
 automatically computed so as to preserve the original aspect ratio.
+
+Optional appended arguments include:
+
+\begin{tabular}{p{10pt} p{1in} p{3.75in}}
+ & {\cf interp=}\emph{bool} & If set to zero, it will just copy the
+ ``closest'' pixel; if nonzero, bilinear interpolation of the surrounding
+ 4 pixels will be used. \\
+\end{tabular}
+
 
 \noindent Examples (suppose that the original image is 640x480):
 
@@ -2223,13 +2320,20 @@ Optional appended arguments include:
 decreasing resolution. \\
  & {\cf pad=}\emph{p} & If the argument is nonzero, will pad with
   black pixels to make the resulting image exactly the size specified, if
-  the source and desired size are not the same aspect ratio.
+  the source and desired size are not the same aspect ratio. \\
+ & {\cf exact=}\emph{e} & If the argument is nonzero, will result in an
+  exact match on aspect ratio and centering (partial pixel shift if necessary),
+  whereas the default (0) will only preserve aspect ratio and centering
+  to the precision of a whole pixel. \\
+ & {\cf wrap=}\emph{w} & For ``exact'' aspect ratio fitting, this determines
+  the wrap mode used for the resizing kernel (default: \qkw{black}, other
+  choices include \qkw{clamp}, \qkw{periodic}, \qkw{mirror}).
 \end{tabular}
 
 \noindent Examples:
 
 \begin{code}
-    oiiotool in.exr --fit:pad=1 640x480 -o out.exr
+    oiiotool in.exr --fit:pad=1:exact=1 640x480 -o out.exr
 
     oiiotool in.exr --fit 1024x1024 -o out.exr
 \end{code}
@@ -2378,7 +2482,6 @@ original & with dropouts & median filtered \\
 \ce --erode {\rm \emph{size}}}
 \indexapi{dilate} \indexapi{erode}
 \index{morphological filtering}
-\NEW % 1.7
 
 Perform dilation or erosion on the top image with a window of the given size
 expressed as \emph{width}{\cf x}\emph{height}. (The sizes are integers.)
@@ -2596,7 +2699,6 @@ image out.
 
 
 \apiitem{\ce --line {\rm \emph{x1,y1,x2,y2,...}}}
-\NEW % 1.7
 Draw (rasterize) an open polyline connecting the list of pixel positions, as
 a comma-separated list of alternating $x$ and $y$ values. Additional
 optional arguments include:
@@ -2617,7 +2719,6 @@ The default color, if not supplied, is opaque white.
 
 
 \apiitem{\ce --box {\rm \emph{x1,y1,x2,y2}}}
-\NEW % 1.7
 Draw (rasterize) a filled or unfilled a box with opposite corners {\cf (x1,y1)}
 and {\cf (x2,y2)}. Additional optional arguments include:
 
@@ -2705,6 +2806,12 @@ Draw (rasterize) text overtop of the current image.
  & {\cf font=}\emph{name} & font name, full path to the font file on
   disk (use double quotes {\cf "name"} if the path name includes spaces) \\
  & {\cf color=}\emph{r,g,b,...} & specify the color of the text \\
+ & {\cf xalign=}\emph{val} & controls horizontal text alignment: \qkw{left}
+                (default), \qkw{right}, \qkw{center}. \\
+ & {\cf yalign=}\emph{val} & controls vertical text alignment: \qkw{base}
+                (default), \qkw{top}, \qkw{bottom}, \qkw{center}. \\
+ & {\cf shadow=}\emph{size} & if nonzero, will make a dark shadow halo to
+                make the text more clear on bright backgrounds.
 \end{tabular}
 
 The default positions the text starting at the center of the image,
@@ -2714,11 +2821,22 @@ using a default font (which may be system dependent).
 \noindent Examples:
 
 \begin{smallcode}
-    oiiotool in.exr --text:x=10:y=400:size=40 "Hello world" \
+    oiiotool --create 320x240 3 --text:x=10:y=400:size=40 "Hello world" \
         --text:x=100:y=200:font="Arial Bold":color=1,0,0:size=60 "Go Big Red!" \
         --tocolorspace sRGB -o text.jpg
+
+    oiiotool --create 320x240 3 --text:x=160:y=120:xalign=center "Centered" \
+        --tocolorspace sRGB -o textcentered.jpg
+
+    oiiotool tahoe-small.jpg \
+            --text:x=160:y=40:xalign=center:size=40:shadow=0 "shadow = 0" \
+            --text:x=160:y=80:xalign=center:size=40:shadow=1 "shadow = 1" \
+            --text:x=160:y=120:xalign=center:size=40:shadow=2 "shadow = 2" \
+            --tocolorspace sRGB -o textshadowed.jpg
 \end{smallcode}
-\spc \includegraphics[width=2.5in]{figures/text.jpg}  \\
+\includegraphics[width=1.75in]{figures/text.jpg}
+\includegraphics[width=1.75in]{figures/textcentered.jpg}
+\includegraphics[width=1.75in]{figures/textshadowed.jpg} \\
 
 \noindent Note that because of slightly differing fonts and versions of
 Freetype available, we do not expect drawn text to be pixel-for-pixel 
@@ -2771,6 +2889,10 @@ arguments include:
  & {\cf value=}\emph{str} & Adds a key/value pair to the ``context'' that
   OpenColorIO will used when applying the look. Multiple key/value pairs
   may be specified by making each one a comma-separated list. \\
+ & {\cf strict=}\emph{val} & When nonzero (the default), an
+     inability to perform the color transform will be a hard error. If
+     strict is 0, inability to find the transformation will just print a
+     warning and simply copy the image without changing colors. \\
 \end{tabular}
 \apiend
 
@@ -2917,11 +3039,19 @@ samples in each pixel.
 
 \apiitem{\ce --deepmerge}
 \index{composite}
-\NEW % 1.7
 Replace the \emph{two} top images with a new deep image that is the ``deep
 merge'' of the inputs. Both input images must be deep images, have the same
 number and order of channels and must contain an alpha channel and depth
 channel.
+\apiend
+
+\apiitem{\ce --deepholdout}
+\index{composite}
+\NEW % 1.8
+Replace the \emph{two} top images with a new deep image that is the ``deep
+holdout'' of the first image by the second --- that is, the samples from
+the first image that are closer than the opaque frontier of the second
+image. Both input inputs must be deep images.
 \apiend
 
 
@@ -2991,7 +3121,6 @@ read.
 \apiend
 
 \apiitem{\ce --fixnan {\rm \emph{streategy}}}
-\NEW % 1.7
 Replace the top image with a copy in which any pixels that contained {\cf
 NaN} or {\cf Inf} values (hereafter referred to collectively as
 ``nonfinite'') are repaired.  The \emph{strategy} may be either {\cf black}

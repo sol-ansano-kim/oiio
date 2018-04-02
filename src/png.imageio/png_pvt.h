@@ -35,13 +35,13 @@
 #include <zlib.h>
 #include <OpenEXR/ImathColor.h>
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/typedesc.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/sysutil.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/typedesc.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/sysutil.h>
 
 
 #define OIIO_LIBPNG_VERSION (PNG_LIBPNG_VER_MAJOR*10000 + PNG_LIBPNG_VER_MINOR*100 + PNG_LIBPNG_VER_RELEASE)
@@ -167,8 +167,18 @@ read_info (png_structp& sp, png_infop& ip, int& bit_depth, int& color_type,
     } else {
         double gamma;
         if (png_get_gAMA (sp, ip, &gamma)) {
-            spec.attribute ("oiio:Gamma", (float)(1.0f/gamma));
-            spec.attribute ("oiio:ColorSpace", (gamma == 1) ? "Linear" : "GammaCorrected");
+            // Round gamma to the nearest hundredth to prevent stupid
+            // precision choices and make it easier for apps to make
+            // decisions based on known gamma values. For example, you want
+            // 2.2, not 2.19998.
+            float g = float (1.0 / gamma);
+            g = roundf (100.0 * g) / 100.0f;
+            spec.attribute ("oiio:Gamma", g);
+            if (g == 1.0f)
+                spec.attribute ("oiio:ColorSpace", "linear");
+            else
+                spec.attribute ("oiio:ColorSpace",
+                                Strutil::format("GammaCorrected%.2g", g));
         }
     }
 
@@ -189,7 +199,7 @@ read_info (png_structp& sp, png_infop& ip, int& bit_depth, int& color_type,
 
     png_timep mod_time;
     if (png_get_tIME (sp, ip, &mod_time)) {
-        std::string date = Strutil::format ("%4d:%02d:%02d %2d:%02d:%02d",
+        std::string date = Strutil::format ("%4d:%02d:%02d %02d:%02d:%02d",
                            mod_time->year, mod_time->month, mod_time->day,
                            mod_time->hour, mod_time->minute, mod_time->second);
         spec.attribute ("DateTime", date); 
@@ -206,6 +216,8 @@ read_info (png_structp& sp, png_infop& ip, int& bit_depth, int& color_type,
                 spec.attribute ("Artist", text_ptr[i].text);
             else if (Strutil::iequals (text_ptr[i].key, "Title"))
                 spec.attribute ("DocumentName", text_ptr[i].text);
+            else if (Strutil::iequals (text_ptr[i].key, "XML:com.adobe.xmp"))
+                decode_xmp (text_ptr[i].text, spec);
             else
                 spec.attribute (text_ptr[i].key, text_ptr[i].text);
         }
@@ -406,7 +418,7 @@ put_parameter (png_structp& sp, png_infop& ip, const std::string &_name,
     if (Strutil::iequals(name, "DateTime") && type == TypeDesc::STRING) {
         png_time mod_time;
         int year, month, day, hour, minute, second;
-        if (sscanf (*(const char **)data, "%4d:%02d:%02d %2d:%02d:%02d",
+        if (sscanf (*(const char **)data, "%4d:%02d:%02d %02d:%02d:%02d",
                     &year, &month, &day, &hour, &minute, &second) == 6) {
             mod_time.year = year;
             mod_time.month = month;
@@ -489,7 +501,10 @@ write_info (png_structp& sp, png_infop& ip, int& color_type,
     if (Strutil::iequals (colorspace, "Linear")) {
         png_set_gAMA (sp, ip, 1.0);
     }
-    else if (Strutil::iequals (colorspace, "GammaCorrected")) {
+    else if (Strutil::istarts_with (colorspace, "GammaCorrected")) {
+        float g = Strutil::from_string<float>(colorspace.c_str()+14);
+        if (g >= 0.01f && g <= 10.0f /* sanity check */)
+            gamma = g;
         png_set_gAMA (sp, ip, 1.0f/gamma);
     }
     else if (Strutil::iequals (colorspace, "sRGB")) {
@@ -497,7 +512,7 @@ write_info (png_structp& sp, png_infop& ip, int& color_type,
     }
 
     // Write ICC profile, if we have anything
-    const ImageIOParameter* icc_profile_parameter = spec.find_attribute(ICC_PROFILE_ATTR);
+    const ParamValue* icc_profile_parameter = spec.find_attribute(ICC_PROFILE_ATTR);
     if (icc_profile_parameter != NULL) {
         unsigned int length = icc_profile_parameter->type().size();
 #if OIIO_LIBPNG_VERSION > 10500 /* PNG function signatures changed */
@@ -516,7 +531,7 @@ write_info (png_structp& sp, png_infop& ip, int& color_type,
         time (&now);
         struct tm mytm;
         Sysutil::get_local_time (&now, &mytm);
-        std::string date = Strutil::format ("%4d:%02d:%02d %2d:%02d:%02d",
+        std::string date = Strutil::format ("%4d:%02d:%02d %02d:%02d:%02d",
                                mytm.tm_year+1900, mytm.tm_mon+1, mytm.tm_mday,
                                mytm.tm_hour, mytm.tm_min, mytm.tm_sec);
         spec.attribute ("DateTime", date);

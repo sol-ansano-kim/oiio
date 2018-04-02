@@ -204,6 +204,10 @@ or special instructions to be passed on to the eventual
 \apiitem{bool {\ce read} (int subimage=0, int miplevel=0, bool force=false, \\
    \bigspc            TypeDesc convert=TypeDesc::UNKNOWN, \\
    \bigspc            ProgressCallback progress_callback=NULL, \\
+   \bigspc            void *progress_callback_data=NULL) \\
+bool {\ce read} (int subimage, int miplevel, \\
+   \bigspc            int chbegin, int chend, bool force, TypeDesc convert, \\
+   \bigspc            ProgressCallback progress_callback=NULL, \\
    \bigspc            void *progress_callback_data=NULL)}
 
 Explicitly reads the particular subimage and MIP level of the image.  Generally,
@@ -229,6 +233,13 @@ native file type and also is not one of the internal types supported by
 the {\cf ImageCache} (specifically, {\cf FLOAT} and {\cf UINT8});
 (c) if the \ImageBuf already has local pixel memory allocated, or
 ``wraps'' an application buffer.
+
+\NEW % 1.8
+The variety of {\cf read()} that takes {\cf chbegin} and {\cf chend}
+parameters allows you to populate the \ImageBuf with a (contiguous) subset
+of channels from the file. This can be useful if you are only interested
+in a subset of channels and want to save the memory and I/O costs for the
+channels you won't want.
 
 If {\cf progress_callback} is non-NULL, the underlying read, if
 expensive, may make several calls to
@@ -626,13 +637,11 @@ allocated, this is equivalent to inserting or erasing samples.
 \apiend
 
 \apiitem{void {\ce deep_insert_samples} (int x, int y, int z, int samplepos, int nsamples)}
-\NEW % 1.7
 Insert {\cf nsamples} new samples, starting at position {\cf samplepos} of
 pixel {\cf (x,y,z)}.
 \apiend
 
 \apiitem{void {\ce deep_erase_samples} (int x, int y, int z, int samplepos, int nsamples)}
-\NEW % 1.7
 Remove {\cf nsamples} new samples, starting at position {\cf samplepos} of
 pixel {\cf (x,y,z)}.
 \apiend
@@ -701,9 +710,15 @@ aren't local (for example, if backed by an \ImageCache).
 \apiend
 
 \apiitem{int {\ce pixelindex} (int x, int y, int z, bool check_range=false) const}
-\NEW %1.7
 Return the index of pixel (x,y,z). If {\cf check_range} is {\cf true},
 return -1 for an invalid coordinate that is not within the data window.
+\apiend
+
+\apiitem{static WrapMode {\ce WrapMode_from_string} (string_view name)}
+\NEW % 1.7/1.8
+Return the {\cf WrapMode} corresponding to the name (\qkw{default},
+\qkw{black}, \qkw{clamp}, \qkw{periodic}, \qkw{mirror}). For an unknown
+name, this will return {\cf WrapDefault}.
 \apiend
 
 

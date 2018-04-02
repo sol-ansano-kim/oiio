@@ -35,9 +35,9 @@
 #include <sstream>
 #include <map>
 
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
 
 // This represent the size of ONE header unit in FITS file.
 #define HEADER_SIZE 2880
@@ -64,7 +64,7 @@ struct Subimage {
 
 
 
-class FitsInput : public ImageInput {
+class FitsInput final : public ImageInput {
  public:
     FitsInput () { init (); }
     virtual ~FitsInput () { close (); }
@@ -136,7 +136,7 @@ class FitsInput : public ImageInput {
 
 
 
-class FitsOutput : public ImageOutput {
+class FitsOutput final : public ImageOutput {
  public:
     FitsOutput () { init (); }
     virtual ~FitsOutput () { close (); }

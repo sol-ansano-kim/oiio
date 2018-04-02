@@ -14,8 +14,6 @@ MY_CMAKE_FLAGS += -DEXTRA_CPP_ARGS:STRING="-DOIIO_SPI=1" -DOIIO_SITE:STRING=SPI
 SPCOMP2_SHOTTREE_LOCATION = /shots/spi/home/lib/SpComp2
 INSTALL_SPCOMP2_LOCATION = /shots/spi/home/lib/SpComp2
 NUKE_VERSION ?= 10.0v4
-CPPSTDSUFFIX=
-
 
 ## Detect which SPI platform and set $platform, $COMPILER, $SPCOMP2_COMPILER,
 ## and PYVER. Lots of other decisions are based on these.
@@ -43,14 +41,17 @@ OCIO_SPCOMP_VERSION ?= 2
 
 ## Rhel7 (current)
 ifeq ($(SP_OS), rhel7)
-    USE_CPP11 ?= 1
-    USE_SIMD = sse4.1
+    USE_CPP ?= 11
+    USE_SIMD ?= sse4.1
+    CMAKE ?= cmake
     USE_NINJA ?= 1
     NINJA ?= ninja
-    CMAKE ?= cmake
     ifeq ($(USE_NINJA),1)
         MY_CMAKE_FLAGS += -DCMAKE_MAKE_PROGRAM=${NINJA}
     endif
+    export CCACHE_CPP2 ?= 1
+    # Override lib64 and use SPI convention of lib
+    MY_CMAKE_FLAGS += -DCMAKE_INSTALL_LIBDIR="${INSTALL_PREFIX}/lib"
     BOOSTVERS ?= 1.55
     SPCOMP2_USE_BOOSTVERS ?= 1
     OCIO_PATH ?= "${SPCOMP2_SHOTTREE_LOCATION}/OpenColorIO/${SP_OS}-${SPCOMP2_COMPILER}/v${OCIO_SPCOMP_VERSION}"
@@ -58,24 +59,22 @@ ifeq ($(SP_OS), rhel7)
 
     ## If not overridden, here is our preferred LLVM installation
     ## (may be changed as new versions are rolled out to the facility)
-    LLVM_DIRECTORY ?= /shots/spi/home/lib/arnold/spinux1/llvm_3.4.2
+    LLVM_DIRECTORY ?= /shots/spi/home/lib/arnold/rhel7/llvm_4.0_final
 
     # A variety of tags can be used to try specific versions of gcc or
     # clang from the site-specific places we have installed them.
-    ifeq (${COMPILER}, clang342)
-        MY_CMAKE_FLAGS += \
-           -DCMAKE_C_COMPILER=/shots/spi/home/lib/arnold/spinux1/llvm_3.4.2/bin/clang \
-           -DCMAKE_CXX_COMPILER=/shots/spi/home/lib/arnold/spinux1/llvm_3.4.2/bin/clang++
-    else ifeq (${COMPILER}, gcc472)
-      MY_CMAKE_FLAGS += \
-         -DCMAKE_C_COMPILER=/net/soft_scratch/apps/arnold/tools/gcc-4.7.2-test/bin/gcc \
-         -DCMAKE_CXX_COMPILER=/net/soft_scratch/apps/arnold/tools/gcc-4.7.2-test/bin/g++
+    ifeq (${COMPILER},clang4)
+	LLVM_DIRECTORY := /shots/spi/home/lib/arnold/rhel7/llvm_4.0_final
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=${LLVM_DIRECTORY}/bin/clang -DCMAKE_CXX_COMPILER=${LLVM_DIRECTORY}/bin/clang++
+    else ifeq (${COMPILER},clang5)
+	LLVM_DIRECTORY := /shots/spi/home/lib/arnold/rhel7/llvm_5.0_RC2
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=${LLVM_DIRECTORY}/bin/clang -DCMAKE_CXX_COMPILER=${LLVM_DIRECTORY}/bin/clang++
+    else ifeq (${COMPILER},clang)
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
     else ifeq (${COMPILER}, gcc490)
       MY_CMAKE_FLAGS += \
          -DCMAKE_C_COMPILER=/net/soft_scratch/apps/arnold/tools/gcc-4.9-20130512-test/bin/gcc \
          -DCMAKE_CXX_COMPILER=/net/soft_scratch/apps/arnold/tools/gcc-4.9-20130512-test/bin/g++
-    else ifeq (${COMPILER},clang)
-        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
     else ifeq (${COMPILER},gcc)
         MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
     else ifeq (${COMPILER},)
@@ -104,7 +103,7 @@ ifeq ($(SP_OS), rhel7)
 	-DBoost_INCLUDE_DIRS=/usr/include/boost_${BOOSTVERSSP} \
 	-DBoost_LIBRARY_DIRS=/usr/lib64/boost_${BOOSTVERSSP} \
 	-Dboost_PYTHON_FOUND=1 -DPYTHONLIBS_FOUND=1 \
-	-DBoost_LIBRARIES:STRING="/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_filesystem-gcc48-mt${BOOSTVERS_SUFFIX}.so;/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_filesystem-gcc48-mt${BOOSTVERS_SUFFIX}.so;/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_regex-gcc48-mt${BOOSTVERS_SUFFIX}.so;/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_system-gcc48-mt${BOOSTVERS_SUFFIX}.so;/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_thread-gcc48-mt${BOOSTVERS_SUFFIX}.so" \
+	-DBoost_LIBRARIES:STRING="/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_filesystem-gcc48-mt${BOOSTVERS_SUFFIX}.so;/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_regex-gcc48-mt${BOOSTVERS_SUFFIX}.so;/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_system-gcc48-mt${BOOSTVERS_SUFFIX}.so;/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_thread-gcc48-mt${BOOSTVERS_SUFFIX}.so" \
 	-DBoost_PYTHON_LIBRARIES:STRING="/usr/lib64/boost_${BOOSTVERSSP}/libspboost_${BOOSTVERS_PREFIX}_python-gcc48-mt${BOOSTVERS_SUFFIX}.so" \
 	-DPYTHON_LIBRARIES:STRING="/usr/lib64/libpython${PYVER}.so"
     # FIXME: Force use of libtiff 3.9.4 because libtiff symbols are not
@@ -119,26 +118,21 @@ ifeq ($(SP_OS), rhel7)
     MY_CMAKE_FLAGS += -DTIFF_INCLUDE_DIR:STRING=/usr/include \
                       -DTIFF_LIBRARIES:STRING=/net/soft_scratch/users/lg/tiff-4.0.3/rhel7/lib/libtiff.a
     MY_CMAKE_FLAGS += -DHIDE_SYMBOLS=1
-    MY_CMAKE_FLAGS += -DVISIBILITY_MAP_FILE:STRING="${working_dir}/site/spi/libOpenImageIO.map"
+    MY_CMAKE_FLAGS += -DVISIBILITY_MAP_FILE:STRING="${working_dir}/site/spi/hidesymbols.map"
     MY_CMAKE_FLAGS += -DEXTRA_DSO_LINK_ARGS:STRING="-Wl,--exclude-libs,libtiff.a"
+    MY_CMAKE_FLAGS += -DUSE_OPENCV=0
 
     # end rhel7
 
 ## Official OS X build machines with special conventions
 else ifeq ($(SP_OS), lion)
-    USE_CPP11 ?= 0
-    USE_SIMD = sse4.2
+    USE_CPP ?= 11
+    USE_SIMD ?= sse4.2
     MACPORTS_PREFIX=/opt/local-10.7-2012-08
     OCIO_PATH ?= "${SPCOMP2_SHOTTREE_LOCATION}/OpenColorIO/${SP_OS}-${SPCOMP2_COMPILER}/v${OCIO_SPCOMP_VERSION}"
     FIELD3D_HOME ?= "${INSTALL_SPCOMP2_LOCATION}/Field3D/${SP_OS}-${SPCOMP2_COMPILER}-boost151/v306"
     # CMAKE_CXX_COMPILER:
     #   otherwise g++ is used and SPI standardized on clang.
-    # CMAKE_INSTALL_NAME_DIR:
-    #   without libraries and applications linking against this
-    #   library will not be able to find it at run time; prepends
-    #   "@rpath/" to the internal ID
-    # OPENJPEG_HOME:
-    #   Setting THIRD_PARTY_TOOLS_HOME isn't sufficient
     # OVERRIDE_SHARED_LIBRARY_SUFFIX:
     #   Set to .so so that shared libraries end in .so to be consistent
     #   with Linux SpComp2 shared libraries
@@ -146,8 +140,6 @@ else ifeq ($(SP_OS), lion)
     # PYTHON_INCLUDE_DIR:
     # PYTHON_LIBRARY:
     #   Use MacPorts' Python
-    # THIRD_PARTY_TOOLS_HOME:
-    #   Find everything in SPI's MacPorts.
     # ZLIB_ROOT:
     #   Needed to use SPI's MacPorts' zlib.
     MY_CMAKE_FLAGS += \
@@ -158,36 +150,44 @@ else ifeq ($(SP_OS), lion)
       -DPYTHON_EXECUTABLE=${MACPORTS_PREFIX}/bin/python${PYVER} \
       -DPYTHON_INCLUDE_DIR=${MACPORTS_PREFIX}/Library/Frameworks/Python.framework/Versions/2.7/Headers \
       -DPYTHON_LIBRARIES=${MACPORTS_PREFIX}/Library/Frameworks/Python.framework/Versions/2.7/Python \
-      -DTHIRD_PARTY_TOOLS_HOME=${MACPORTS_PREFIX} \
       -DZLIB_ROOT=${MACPORTS_PREFIX}
-    MY_CMAKE_FLAGS += \
-        -DCMAKE_INSTALL_NAME_DIR="${working_dir}/dist/${SP_OS}${variant}/lib"
     ifeq (${SPCOMP2_USE_BOOSTVERS}, 1)
 	BOOSTVERS_UNDERSCORE = ${shell echo ${BOOSTVERS} | sed "s/\\./_/"}
 	MY_CMAKE_FLAGS += \
             -DBOOST_CUSTOM=1 \
             -DBoost_INCLUDE_DIRS=/usr/include/boost_${BOOSTVERS} \
             -DBoost_LIBRARY_DIRS=/usr/lib64/boost_${BOOSTVERS} \
-            -DBoost_LIBRARIES=optimized;/usr/lib64/boost_${BOOSTVERS}/libboost_filesystem-gcc44-mt-${BOOSTVERS_UNDERSCORE}.so;optimized;/usr/lib64/boost_${BOOSTVERS}/libboost_filesystem-gcc44-mt-${BOOSTVERS_UNDERSCORE}.so;optimized;/usr/lib64/boost_${BOOSTVERS}/libboost_regex-gcc44-mt-${BOOSTVERS_UNDERSCORE}.so;optimized;/usr/lib64/boost_${BOOSTVERS}/libboost_system-gcc44-mt-${BOOSTVERS_UNDERSCORE}.so;optimized;/usr/lib64/boost_${BOOSTVERS}/libboost_thread-gcc44-mt-${BOOSTVERS_UNDERSCORE}.so
+            -DBoost_LIBRARIES=optimized;/usr/lib64/boost_${BOOSTVERS}/libboost_filesystem-gcc44-mt-${BOOSTVERS_UNDERSCORE}.so;optimized;/usr/lib64/boost_${BOOSTVERS}/libboost_system-gcc44-mt-${BOOSTVERS_UNDERSCORE}.so;optimized;/usr/lib64/boost_${BOOSTVERS}/libboost_thread-gcc44-mt-${BOOSTVERS_UNDERSCORE}.so
     endif
 
     # end SPI lion
 
 ## Generic OSX machines (including LG's laptop)
 else ifeq (${platform}, macosx)
-    USE_SIMD = sse4.2
-    MY_CMAKE_FLAGS += \
-        -DCMAKE_INSTALL_NAME_DIR="${working_dir}/dist/${platform}${variant}/lib"
-    # don't need this? -DBUILD_WITH_INSTALL_RPATH=1
+    USE_SIMD ?= sse4.2
 
     # A variety of tags can be used to try specific versions of gcc or
     # clang from the site-specific places we have installed them.
-    ifeq (${COMPILER}, gcc5)
+    ifeq (${COMPILER}, gcc48)
         MY_CMAKE_FLAGS += \
-           -DCMAKE_C_COMPILER=/usr/local/bin/gcc-5 -DCMAKE_CXX_COMPILER=/usr/local/bin/g++-5
+           -DCMAKE_C_COMPILER=gcc-4.8 -DCMAKE_CXX_COMPILER=g++-4.8
+        USE_LIBCPLUSPLUS := 0
+    else ifeq (${COMPILER}, gcc49)
+        MY_CMAKE_FLAGS += \
+           -DCMAKE_C_COMPILER=gcc-4.9 -DCMAKE_CXX_COMPILER=g++-4.9
+        USE_LIBCPLUSPLUS := 0
+    else ifeq (${COMPILER}, gcc5)
+        MY_CMAKE_FLAGS += \
+           -DCMAKE_C_COMPILER=gcc-5 -DCMAKE_CXX_COMPILER=g++-5
+        USE_LIBCPLUSPLUS := 0
     else ifeq (${COMPILER}, gcc6)
         MY_CMAKE_FLAGS += \
-           -DCMAKE_C_COMPILER=/usr/local/bin/gcc-6 -DCMAKE_CXX_COMPILER=/usr/local/bin/g++-6
+           -DCMAKE_C_COMPILER=gcc-6 -DCMAKE_CXX_COMPILER=g++-6
+        USE_LIBCPLUSPLUS := 0
+    else ifeq (${COMPILER},clang35)
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang-3.5 -DCMAKE_CXX_COMPILER=clang++-3.5
+    else ifeq (${COMPILER},clang38)
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang-3.8 -DCMAKE_CXX_COMPILER=clang++-3.8
     else ifeq (${COMPILER},clang)
         MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
     else ifeq (${COMPILER},gcc)

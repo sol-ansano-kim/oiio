@@ -41,25 +41,24 @@
 #include <OpenEXR/ImathVec.h>
 #include <OpenEXR/half.h>
 
-#include "OpenImageIO/argparse.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/ustring.h"
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagebufalgo.h"
-#include "OpenImageIO/imagebufalgo_util.h"
-#include "OpenImageIO/texture.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/sysutil.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/timer.h"
+#include <OpenImageIO/argparse.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/ustring.h>
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
+#include <OpenImageIO/imagebufalgo_util.h>
+#include <OpenImageIO/texture.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/sysutil.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/timer.h>
+#include <OpenImageIO/benchmark.h>
 #include "../libtexture/imagecache_pvt.h"
 
-OIIO_NAMESPACE_USING
+using namespace OIIO;
 
-#if OIIO_CPLUSPLUS_VERSION >= 11
 using OIIO::_1;
-#endif
 
 static std::vector<ustring> filenames;
 static std::string output_filename = "out.exr";
@@ -84,7 +83,7 @@ static bool test_getimagespec = false;
 static bool filtertest = false;
 static TextureSystem *texsys = NULL;
 static std::string searchpath;
-static int blocksize = 1;
+static bool batch = false;
 static bool nowarp = false;
 static bool tube = false;
 static bool use_handle = false;
@@ -111,8 +110,18 @@ static Imath::M33f xform;
 static mutex error_mutex;
 void *dummyptr;
 
-typedef void (*Mapping2D)(int,int,float&,float&,float&,float&,float&,float&);
-typedef void (*Mapping3D)(int,int,Imath::V3f&,Imath::V3f&,Imath::V3f&,Imath::V3f &);
+typedef void (*Mapping2D)(const int&,const int&,float&,float&,float&,float&,float&,float&);
+typedef void (*Mapping3D)(const int&,const int&,Imath::V3f&,Imath::V3f&,Imath::V3f&,Imath::V3f &);
+
+typedef void (*Mapping2DWide)(const Tex::IntWide&,const Tex::IntWide&,
+                              Tex::FloatWide&,Tex::FloatWide&,
+                              Tex::FloatWide&,Tex::FloatWide&,
+                              Tex::FloatWide&,Tex::FloatWide&);
+typedef void (*Mapping3DWide)(const Tex::IntWide&,const Tex::IntWide&,
+                              Imath::Vec3<Tex::FloatWide>&,
+                              Imath::Vec3<Tex::FloatWide>&,
+                              Imath::Vec3<Tex::FloatWide>&,
+                              Imath::Vec3<Tex::FloatWide>&);
 
 
 
@@ -120,7 +129,7 @@ static int
 parse_files (int argc, const char *argv[])
 {
     for (int i = 0;  i < argc;  i++)
-        filenames.push_back (ustring(argv[i]));
+        filenames.emplace_back(argv[i]);
     return 0;
 }
 
@@ -129,7 +138,7 @@ parse_files (int argc, const char *argv[])
 static void
 getargs (int argc, const char *argv[])
 {
-    TextureOptions opt;  // to figure out defaults
+    TextureOpt opt;  // to figure out defaults
     anisotropic = opt.anisotropic;
 
     bool help = false;
@@ -162,7 +171,8 @@ getargs (int argc, const char *argv[])
                         "Specify missing texture color",
                   "--autotile %d", &autotile, "Set auto-tile size for the image cache",
                   "--automip", &automip, "Set auto-MIPmap for the image cache",
-                  "--blocksize %d", &blocksize, "Set blocksize (n x n) for batches",
+                  "--batch", &batch,
+                        Strutil::format("Use batched shading, batch size = %d", Tex::BatchWidth).c_str(),
                   "--handle", &use_handle, "Use texture handle rather than name lookup",
                   "--searchpath %s", &searchpath, "Search path for files",
                   "--filtertest", &filtertest, "Test the filter sizes",
@@ -233,6 +243,29 @@ initialize_opt (TextureOpt &opt, int nchannels)
 
 
 static void
+initialize_opt (TextureOptBatch &opt, int nchannels)
+{
+    using namespace Tex;
+    FloatWide sb(sblur); sb.store (opt.sblur);
+    FloatWide tb(tblur >= 0.0f ? tblur : sblur); tb.store (opt.tblur);
+    sb.store (opt.rblur);
+    FloatWide w (width);
+    w.store (opt.swidth);
+    w.store (opt.twidth);
+    w.store (opt.rwidth);
+    opt.fill = (fill >= 0.0f) ? fill : 1.0f;
+    if (missing[0] >= 0)
+        opt.missingcolor = (float *)&missing;
+    Tex::parse_wrapmodes (wrapmodes.c_str(), opt.swrap, opt.twrap);
+    opt.rwrap = opt.swrap;
+    opt.anisotropic = anisotropic;
+    opt.mipmode = MipMode(mipmode);
+    opt.interpmode = InterpMode(interpmode);
+}
+
+
+
+static void
 test_gettextureinfo (ustring filename)
 {
     bool ok;
@@ -272,7 +305,7 @@ test_gettextureinfo (ustring filename)
         std::cout << " " << avg[0] << ' ' << avg[1] << ' '
                   << avg[2] << ' ' << avg[3] << "\n";
     ok = texsys->get_texture_info (filename, 0, ustring("averagealpha"),
-                                   TypeDesc::TypeFloat, avg);
+                                   TypeFloat, avg);
     std::cout << "Result of get_texture_info averagealpha = " << (ok?"yes":"no\n");
     if (ok)
         std::cout << " " << avg[0] << "\n";
@@ -293,75 +326,47 @@ test_gettextureinfo (ustring filename)
 
 
 
-static void
-adjust_spec (ImageSpec &outspec, const std::string &dataformatname)
+template<typename Float=float>
+inline Imath::Vec2<Float>
+warp (const Float& x, const Float& y, const Imath::M33f &xform)
 {
-    if (! dataformatname.empty()) {
-        if (dataformatname == "uint8")
-            outspec.set_format (TypeDesc::UINT8);
-        else if (dataformatname == "int8")
-            outspec.set_format (TypeDesc::INT8);
-        else if (dataformatname == "uint10") {
-            outspec.attribute ("oiio:BitsPerSample", 10);
-            outspec.set_format (TypeDesc::UINT16);
-        }
-        else if (dataformatname == "uint12") {
-            outspec.attribute ("oiio:BitsPerSample", 12);
-            outspec.set_format (TypeDesc::UINT16);
-        }
-        else if (dataformatname == "uint16")
-            outspec.set_format (TypeDesc::UINT16);
-        else if (dataformatname == "int16")
-            outspec.set_format (TypeDesc::INT16);
-        else if (dataformatname == "half")
-            outspec.set_format (TypeDesc::HALF);
-        else if (dataformatname == "float")
-            outspec.set_format (TypeDesc::FLOAT);
-        else if (dataformatname == "double")
-            outspec.set_format (TypeDesc::DOUBLE);
-        outspec.channelformats.clear ();
-    }
-}
-
-
-
-inline Imath::V2f
-warp (float x, float y, const Imath::M33f &xform)
-{
-    Imath::V2f coord (x, y);
+    Imath::Vec2<Float> coord (x, y);
     xform.multVecMatrix (coord, coord);
     return coord;
 }
 
 
-inline Imath::V3f
-warp (float x, float y, float z, const Imath::M33f &xform)
+template<typename Float=float>
+inline Imath::Vec3<Float>
+warp (const Float& x, const Float& y, const Float& z, const Imath::M33f &xform)
 {
-    Imath::V3f coord (x, y, z);
+    Imath::Vec3<Float> coord (x, y, z);
     coord *= xform;
     return coord;
 }
 
 
-inline Imath::V2f
-warp_coord (float x, float y)
+template<typename Float=float>
+inline Imath::Vec2<Float>
+warp_coord (const Float& x, const Float& y)
 {
-    Imath::V2f coord = warp (x/output_xres, y/output_yres, xform);
+    Imath::Vec2<Float> coord = warp (x/output_xres, y/output_yres, xform);
     coord.x *= sscale;
     coord.y *= tscale;
-    coord += Imath::V2f(texoffset.x, texoffset.y);
+    coord += Imath::Vec2<Float>(texoffset.x, texoffset.y);
     return coord;
 }
 
 
 
 // Just map pixels to [0,1] st space
-static void
-map_default (int x, int y, float &s, float &t,
-             float &dsdx, float &dtdx, float &dsdy, float &dtdy)
+template<typename Float=float, typename Int=int>
+void
+map_default (const Int& x, const Int& y, Float& s, Float& t,
+             Float& dsdx, Float& dtdx, Float& dsdy, Float& dtdy)
 {
-    s = float(x+0.5f)/output_xres * sscale + texoffset[0];
-    t = float(y+0.5f)/output_yres * tscale + texoffset[1];
+    s = (Float(x)+0.5f)/output_xres * sscale + texoffset[0];
+    t = (Float(y)+0.5f)/output_yres * tscale + texoffset[1];
     dsdx = 1.0f/output_xres * sscale;
     dtdx = 0.0f;
     dsdy = 0.0f;
@@ -370,13 +375,14 @@ map_default (int x, int y, float &s, float &t,
 
 
 
+template<typename Float=float, typename Int=int>
 static void
-map_warp (int x, int y, float &s, float &t,
-          float &dsdx, float &dtdx, float &dsdy, float &dtdy)
+map_warp (const Int& x, const Int& y, Float &s, Float &t,
+          Float &dsdx, Float &dtdx, Float &dsdy, Float &dtdy)
 {
-    const Imath::V2f coord  = warp_coord (x+0.5f, y+0.5f);
-    const Imath::V2f coordx = warp_coord (x+1.5f, y+0.5f);
-    const Imath::V2f coordy = warp_coord (x+0.5f, y+1.5f);
+    const Imath::Vec2<Float> coord  = warp_coord (Float(x)+0.5f, Float(y)+0.5f);
+    const Imath::Vec2<Float> coordx = warp_coord (Float(x)+1.5f, Float(y)+0.5f);
+    const Imath::Vec2<Float> coordy = warp_coord (Float(x)+0.5f, Float(y)+1.5f);
     s = coord[0];
     t = coord[1];
     dsdx = coordx[0] - coord[0];
@@ -388,12 +394,12 @@ map_warp (int x, int y, float &s, float &t,
 
 
 static void
-map_tube (int x, int y, float &s, float &t,
+map_tube (const int& x, const int& y, float &s, float &t,
           float &dsdx, float &dtdx, float &dsdy, float &dtdy)
 {
-    float xt = float(x+0.5f)/output_xres - 0.5f;
+    float xt = (float(x)+0.5f)/output_xres - 0.5f;
     float dxt_dx = 1.0f/output_xres;
-    float yt = float(y+0.5f)/output_yres - 0.5f;
+    float yt = (float(y)+0.5f)/output_yres - 0.5f;
     float dyt_dy = 1.0f/output_yres;
     float theta = atan2f (yt, xt);
     // See OSL's Dual2 for partial derivs of
@@ -417,6 +423,19 @@ map_tube (int x, int y, float &s, float &t,
 
 
 
+// FIXME -- templatize map_tube. For now, just loop over scalar version.
+static void
+map_tube (const Tex::IntWide& x, const Tex::IntWide& y,
+          Tex::FloatWide& s, Tex::FloatWide& t,
+          Tex::FloatWide& dsdx, Tex::FloatWide& dtdx,
+          Tex::FloatWide& dsdy, Tex::FloatWide& dtdy)
+{
+    for (int i = 0; i < Tex::BatchWidth; ++i)
+        map_tube (x[i], y[i], s[i], t[i], dsdx[i], dtdx[i], dsdy[i], dtdy[i]);
+}
+
+
+
 // To test filters, we always sample at the center of the image, and
 // keep the minor axis of the filter at 1/256, but we vary the
 // eccentricity (i.e. major axis length) as we go left (1) to right
@@ -431,7 +450,7 @@ map_tube (int x, int y, float &s, float &t,
 // MIP level.  (Though of course, there are other kinds of mistakes we
 // could be making, such as computing the wrong eccentricity or angle.)
 static void
-map_filtertest (int x, int y, float &s, float &t,
+map_filtertest (const int& x, const int& y, float &s, float &t,
                 float &dsdx, float &dtdx, float &dsdy, float &dtdy)
 {
     float minoraxis = 1.0f/256;
@@ -450,12 +469,28 @@ map_filtertest (int x, int y, float &s, float &t,
 
 
 
-void
-map_default_3D (int x, int y, Imath::V3f &P,
-                Imath::V3f &dPdx, Imath::V3f &dPdy, Imath::V3f &dPdz)
+// FIXME -- templatize map_filtertest. For now, just loop over scalar version.
+static void
+map_filtertest (const Tex::IntWide& x, const Tex::IntWide& y,
+          Tex::FloatWide& s, Tex::FloatWide& t,
+          Tex::FloatWide& dsdx, Tex::FloatWide& dtdx,
+          Tex::FloatWide& dsdy, Tex::FloatWide& dtdy)
 {
-    P[0] = (float)(x+0.5f)/output_xres * sscale;
-    P[1] = (float)(y+0.5f)/output_yres * tscale;
+    for (int i = 0; i < Tex::BatchWidth; ++i)
+        map_filtertest (x[i], y[i], s[i], t[i],
+                        dsdx[i], dtdx[i], dsdy[i], dtdy[i]);
+}
+
+
+
+template<typename Float=float, typename Int=int>
+void
+map_default_3D (const Int& x, const Int& y,
+                Imath::Vec3<Float> &P, Imath::Vec3<Float> &dPdx,
+                Imath::Vec3<Float> &dPdy, Imath::Vec3<Float> &dPdz)
+{
+    P[0] = (Float(x)+0.5f)/output_xres * sscale;
+    P[1] = (Float(y)+0.5f)/output_yres * tscale;
     P[2] = 0.5f * sscale;
     P += texoffset;
     dPdx[0] = 1.0f/output_xres * sscale;
@@ -469,25 +504,27 @@ map_default_3D (int x, int y, Imath::V3f &P,
 
 
 
+template<typename Float=float, typename Int=int>
 void
-map_warp_3D (int x, int y, Imath::V3f &P,
-             Imath::V3f &dPdx, Imath::V3f &dPdy, Imath::V3f &dPdz)
+map_warp_3D (const Int& x, const Int& y,
+             Imath::Vec3<Float> &P, Imath::Vec3<Float> &dPdx,
+             Imath::Vec3<Float> &dPdy, Imath::Vec3<Float> &dPdz)
 {
-    Imath::V3f coord = warp ((float)x/output_xres,
-                             (float)y/output_yres,
-                             0.5, xform);
+    Imath::Vec3<Float> coord = warp ((Float(x)/output_xres),
+                                     (Float(y)/output_yres),
+                                     Float(0.5), xform);
     coord.x *= sscale;
     coord.y *= tscale;
     coord += texoffset;
-    Imath::V3f coordx = warp ((float)(x+1)/output_xres,
-                              (float)y/output_yres,
-                              0.5, xform);
+    Imath::Vec3<Float> coordx = warp ((Float(x+1)/output_xres),
+                                      (Float(y)/output_yres),
+                                      Float(0.5), xform);
     coordx.x *= sscale;
     coordx.y *= tscale;
     coordx += texoffset;
-    Imath::V3f coordy = warp ((float)x/output_xres,
-                              (float)(y+1)/output_yres,
-                              0.5, xform);
+    Imath::Vec3<Float> coordy = warp ((Float(x)/output_xres),
+                                      (Float(y+1)/output_yres),
+                                      Float(0.5), xform);
     coordy.x *= sscale;
     coordy.y *= tscale;
     coordy += texoffset;
@@ -554,16 +591,19 @@ test_plain_texture (Mapping2D mapping)
     std::cout << "Testing 2d texture " << filenames[0] << ", output = "
               << output_filename << "\n";
     const int nchannels = 4;
-    ImageSpec outspec (output_xres, output_yres, nchannels, TypeDesc::HALF);
-    adjust_spec (outspec, dataformatname);
+    ImageSpec outspec (output_xres, output_yres, nchannels, TypeDesc::FLOAT);
     ImageBuf image (outspec);
+    TypeDesc fmt (dataformatname);
+    image.set_write_format (fmt);
     OIIO::ImageBufAlgo::zero (image);
     ImageBuf image_ds, image_dt;
     if (test_derivs) {
         image_ds.reset (outspec);
+        image_ds.set_write_format (fmt);
         OIIO::ImageBufAlgo::zero (image_ds);
         image_dt.reset (outspec);
         OIIO::ImageBufAlgo::zero (image_dt);
+        image_dt.set_write_format (fmt);
     }
 
     ustring filename = filenames[0];
@@ -576,11 +616,10 @@ test_plain_texture (Mapping2D mapping)
             std::cout << "iter " << iter << " file " << filename << "\n";
         }
 
-        OIIO::ImageBufAlgo::parallel_image (OIIO::bind(plain_tex_region, OIIO::ref(image), filename, mapping,
-                                                  test_derivs ? &image_ds : NULL,
-                                                  test_derivs ? &image_dt : NULL, _1),
-                                      get_roi(image.spec()), nthreads);
-
+        ImageBufAlgo::parallel_image (get_roi(image.spec()), nthreads,
+                std::bind(plain_tex_region, std::ref(image), filename, mapping,
+                          test_derivs ? &image_ds : NULL,
+                          test_derivs ? &image_dt : NULL, _1));
         if (resetstats) {
             std::cout << texsys->getstats(2) << "\n";
             texsys->reset_stats ();
@@ -597,6 +636,136 @@ test_plain_texture (Mapping2D mapping)
         if (! image_dt.write (output_filename+"-dt.exr")) 
             std::cerr << "Error writing " << (output_filename+"-dt.exr")
                       << " : " << image_dt.geterror() << "\n";
+    }
+}
+
+
+
+void
+plain_tex_region_batch (ImageBuf &image, ustring filename, Mapping2DWide mapping,
+                  ImageBuf *image_ds, ImageBuf *image_dt, const ROI roi)
+{
+    using namespace Tex;
+    TextureSystem::Perthread *perthread_info = texsys->get_perthread_info ();
+    TextureSystem::TextureHandle *texture_handle = texsys->get_texture_handle (filename);
+    int nchannels_img = image.nchannels();
+    int nchannels = nchannels_override ? nchannels_override : image.nchannels();
+    DASSERT (image.spec().format == TypeDesc::FLOAT);
+    DASSERT (image_ds == nullptr || image_ds->spec().format == TypeDesc::FLOAT);
+    DASSERT (image_dt == nullptr || image_dt->spec().format == TypeDesc::FLOAT);
+
+    TextureOptBatch opt;
+    initialize_opt (opt, nchannels);
+
+    int nc = std::max (3, nchannels);
+    FloatWide *result = ALLOCA (FloatWide, nc);
+    FloatWide *dresultds = test_derivs ? ALLOCA (FloatWide, nc) : nullptr;
+    FloatWide *dresultdt = test_derivs ? ALLOCA (FloatWide, nc) : nullptr;
+    for (int y = roi.ybegin; y < roi.yend; ++y) {
+        for (int x = roi.xbegin; x < roi.xend; x += BatchWidth) {
+            FloatWide s, t, dsdx, dtdx, dsdy, dtdy;
+            mapping (IntWide::Iota(x), y, s, t, dsdx, dtdx, dsdy, dtdy);
+            int npoints = std::min (BatchWidth, roi.xend - x);
+            RunMask mask = RunMaskOn >> (BatchWidth - npoints);
+            // Call the texture system to do the filtering.
+            bool ok;
+            if (use_handle)
+                ok = texsys->texture (texture_handle, perthread_info, opt,
+                                      mask, s.data(), t.data(),
+                                      dsdx.data(), dtdx.data(),
+                                      dsdy.data(), dtdy.data(),
+                                      nchannels, (float *)result,
+                                      (float *)dresultds, (float *)dresultdt);
+            else
+                ok = texsys->texture (filename, opt,
+                                      mask, s.data(), t.data(),
+                                      dsdx.data(), dtdx.data(),
+                                      dsdy.data(), dtdy.data(),
+                                      nchannels, (float *)result,
+                                      (float *)dresultds, (float *)dresultdt);
+            if (! ok) {
+                std::string e = texsys->geterror ();
+                if (! e.empty()) {
+                    lock_guard lock (error_mutex);
+                    std::cerr << "ERROR: " << e << "\n";
+                }
+            }
+            // Save filtered pixels back to the image.
+            for (int c = 0;  c < nchannels;  ++c)
+                result[c] *= scalefactor;
+            float *resultptr = (float *)image.pixeladdr (x, y);
+            // FIXME: simplify by using SIMD scatter
+            for (int c = 0;  c < nchannels;  ++c)
+                for (int i = 0; i < npoints; ++i)
+                    resultptr[c+i*nchannels_img] = result[c][i];
+            if (test_derivs) {
+                float *resultdsptr = (float *)image_ds->pixeladdr (x, y);
+                float *resultdtptr = (float *)image_dt->pixeladdr (x, y);
+                for (int c = 0;  c < nchannels;  ++c) {
+                    for (int i = 0; i < npoints; ++i) {
+                        resultdsptr[c+i*nchannels_img] = dresultds[c][i];
+                        resultdtptr[c+i*nchannels_img] = dresultdt[c][i];
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+void
+test_plain_texture_batch (Mapping2DWide mapping)
+{
+    std::cout << "Testing BATCHED 2d texture " << filenames[0] << ", output = "
+              << output_filename << "\n";
+    const int nchannels = 4;
+    ImageSpec outspec (output_xres, output_yres, nchannels, TypeDesc::FLOAT);
+    TypeDesc fmt (dataformatname);
+    ImageBuf image (outspec);
+    image.set_write_format (fmt);
+    OIIO::ImageBufAlgo::zero (image);
+    std::unique_ptr<ImageBuf> image_ds, image_dt;
+    if (test_derivs) {
+        image_ds.reset (new ImageBuf (outspec));
+        image_ds->set_write_format (fmt);
+        OIIO::ImageBufAlgo::zero (*image_ds);
+        image_dt.reset (new ImageBuf (outspec));
+        image_dt->set_write_format (fmt);
+        OIIO::ImageBufAlgo::zero (*image_dt);
+    }
+
+    ustring filename = filenames[0];
+
+    for (int iter = 0;  iter < iters;  ++iter) {
+        if (iters > 1 && filenames.size() > 1) {
+            // Use a different filename for each iteration
+            int texid = std::min (iter, (int)filenames.size()-1);
+            filename = (filenames[texid]);
+            std::cout << "iter " << iter << " file " << filename << "\n";
+        }
+
+        ImageBufAlgo::parallel_image (get_roi(image.spec()), nthreads,
+                [&](ROI roi){
+                    plain_tex_region_batch (image, filename, mapping,
+                                      image_ds.get(), image_dt.get(), roi);
+                });
+        if (resetstats) {
+            std::cout << texsys->getstats(2) << "\n";
+            texsys->reset_stats ();
+        }
+    }
+
+    if (! image.write (output_filename))
+        std::cerr << "Error writing " << output_filename
+                  << " : " << image.geterror() << "\n";
+    if (test_derivs) {
+        if (! image_ds->write (output_filename+"-ds.exr"))
+            std::cerr << "Error writing " << (output_filename+"-ds.exr")
+                      << " : " << image_ds->geterror() << "\n";
+        if (! image_dt->write (output_filename+"-dt.exr"))
+            std::cerr << "Error writing " << (output_filename+"-dt.exr")
+                      << " : " << image_dt->geterror() << "\n";
     }
 }
 
@@ -645,25 +814,108 @@ tex3d_region (ImageBuf &image, ustring filename, Mapping3D mapping,
 
 
 void
+tex3d_region_batch (ImageBuf &image, ustring filename, Mapping3DWide mapping, ROI roi)
+{
+    using namespace Tex;
+    TextureSystem::Perthread *perthread_info = texsys->get_perthread_info ();
+    TextureSystem::TextureHandle *texture_handle = texsys->get_texture_handle (filename);
+    int nchannels_img = image.nchannels();
+    int nchannels = nchannels_override ? nchannels_override : image.nchannels();
+
+    TextureOptBatch opt;
+    initialize_opt (opt, nchannels);
+    opt.fill = (fill >= 0.0f) ? fill : 0.0f;
+//    opt.swrap = opt.twrap = opt.rwrap = TextureOpt::WrapPeriodic;
+
+    FloatWide *result = ALLOCA (FloatWide, nchannels);
+    FloatWide *dresultds = test_derivs ? ALLOCA (FloatWide, nchannels) : NULL;
+    FloatWide *dresultdt = test_derivs ? ALLOCA (FloatWide, nchannels) : NULL;
+    FloatWide *dresultdr = test_derivs ? ALLOCA (FloatWide, nchannels) : NULL;
+    for (int y = roi.ybegin; y < roi.yend; ++y) {
+        for (int x = roi.xbegin; x < roi.xend; x += BatchWidth) {
+            Imath::Vec3<FloatWide> P, dPdx, dPdy, dPdz;
+            mapping (IntWide::Iota(x), y, P, dPdx, dPdy, dPdz);
+            int npoints = std::min (BatchWidth, roi.xend - x);
+            RunMask mask = RunMaskOn >> (BatchWidth - npoints);
+
+            // Call the texture system to do the filtering.
+            if (y == 0 && x == 0)
+                std::cout << "P = " << P << "\n";
+            bool ok = texsys->texture3d (texture_handle, perthread_info, opt, mask,
+                                         (float*)&P, (float*)&dPdx, (float*)&dPdy, (float*)&dPdz, nchannels,
+                                         (float *)result, (float *)dresultds,
+                                         (float *)dresultdt, (float *)dresultdr);
+            if (! ok) {
+                std::string e = texsys->geterror ();
+                if (! e.empty()) {
+                    lock_guard lock (error_mutex);
+                    std::cerr << "ERROR: " << e << "\n";
+                }
+            }
+
+            // Save filtered pixels back to the image.
+            for (int c = 0;  c < nchannels;  ++c)
+                result[c] *= scalefactor;
+            float *resultptr = (float *)image.pixeladdr (x, y);
+            // FIXME: simplify by using SIMD scatter
+            for (int c = 0;  c < nchannels;  ++c)
+                for (int i = 0; i < npoints; ++i)
+                    resultptr[c+i*nchannels_img] = result[c][i];
+        }
+    }
+}
+
+
+
+void
 test_texture3d (ustring filename, Mapping3D mapping)
 {
     std::cout << "Testing 3d texture " << filename << ", output = "
               << output_filename << "\n";
     int nchannels = nchannels_override ? nchannels_override : 4;
-    ImageSpec outspec (output_xres, output_yres, nchannels, TypeDesc::HALF);
-    adjust_spec (outspec, dataformatname);
+    ImageSpec outspec (output_xres, output_yres, nchannels, TypeDesc::FLOAT);
     ImageBuf image (outspec);
+    TypeDesc fmt (dataformatname);
+    image.set_write_format (fmt);
     OIIO::ImageBufAlgo::zero (image);
 
     for (int iter = 0;  iter < iters;  ++iter) {
         // Trick: switch to second texture, if given, for second iteration
         if (iter && filenames.size() > 1)
             filename = filenames[1];
-
-        OIIO::ImageBufAlgo::parallel_image (OIIO::bind(tex3d_region, OIIO::ref(image), filename, mapping, _1),
-                                      get_roi(image.spec()), nthreads);
+        ImageBufAlgo::parallel_image (get_roi(image.spec()), nthreads,
+                std::bind(tex3d_region, std::ref(image), filename, mapping, _1));
     }
-    
+
+    if (! image.write (output_filename)) 
+        std::cerr << "Error writing " << output_filename 
+                  << " : " << image.geterror() << "\n";
+}
+
+
+
+void
+test_texture3d_batch (ustring filename, Mapping3DWide mapping)
+{
+    std::cout << "Testing 3d texture " << filename << ", output = "
+              << output_filename << "\n";
+    int nchannels = nchannels_override ? nchannels_override : 4;
+    ImageSpec outspec (output_xres, output_yres, nchannels, TypeDesc::FLOAT);
+    ImageBuf image (outspec);
+    TypeDesc fmt (dataformatname);
+    image.set_write_format (fmt);
+    OIIO::ImageBufAlgo::zero (image);
+
+    for (int iter = 0;  iter < iters;  ++iter) {
+        // Trick: switch to second texture, if given, for second iteration
+        if (iter && filenames.size() > 1)
+            filename = filenames[1];
+        ImageBufAlgo::parallel_image (get_roi(image.spec()), nthreads,
+                [&](ROI roi){
+                    tex3d_region_batch (image, filename, mapping, roi);
+                });
+    }
+
     if (! image.write (output_filename)) 
         std::cerr << "Error writing " << output_filename 
                   << " : " << image.geterror() << "\n";
@@ -868,8 +1120,12 @@ do_tex_thread_workout (int iterations, int mythread)
     float *dresultds = test_derivs ? ALLOCA (float, nchannels) : NULL;
     float *dresultdt = test_derivs ? ALLOCA (float, nchannels) : NULL;
     TextureSystem::Perthread *perthread_info = texsys->get_perthread_info ();
-    TextureSystem::TextureHandle *texture_handle = texsys->get_texture_handle (filenames[0]);
     int pixel, whichfile = 0;
+
+    std::vector<TextureSystem::TextureHandle *> texture_handles;
+    for (auto f : filenames)
+        texture_handles.emplace_back (texsys->get_texture_handle(f));
+
     ImageSpec spec0;
     texsys->get_imagespec (filenames[0], 0, spec0);
     // Compute a filter size that's between the first and second MIP levels.
@@ -887,7 +1143,7 @@ do_tex_thread_workout (int iterations, int mythread)
             // texture coordinates all the time, one file), with handles
             // and per-thread data already queried only once rather than
             // per-call.
-            ok = texsys->texture (texture_handle, perthread_info, opt, s, t,
+            ok = texsys->texture (texture_handles[0], perthread_info, opt, s, t,
                                   dsdx, dtdx, dsdy, dtdy, nchannels,
                                   result, dresultds, dresultdt);
             break;
@@ -941,9 +1197,15 @@ do_tex_thread_workout (int iterations, int mythread)
         if (! ok) {
             s = (((2*pixel) % spec0.width) + 0.5f) / spec0.width;
             t = (((2*((2*pixel) / spec0.width)) % spec0.height) + 0.5f) / spec0.height;
-            ok = texsys->texture (filenames[whichfile], opt, s, t,
-                                  dsdx, dtdx, dsdy, dtdy, nchannels,
-                                  result, dresultds, dresultdt);
+            if (use_handle)
+                ok = texsys->texture (texture_handles[whichfile],
+                                      perthread_info, opt, s, t,
+                                      dsdx, dtdx, dsdy, dtdy, nchannels,
+                                      result, dresultds, dresultdt);
+            else
+                ok = texsys->texture (filenames[whichfile], opt, s, t,
+                                      dsdx, dtdx, dsdy, dtdy, nchannels,
+                                      result, dresultds, dresultdt);
         }
         if (! ok) {
             lock_guard lock (error_mutex);
@@ -973,7 +1235,7 @@ launch_tex_threads (int numthreads, int iterations)
     texsys->invalidate_all (true);
     OIIO::thread_group threads;
     for (int i = 0;  i < numthreads;  ++i) {
-        threads.create_thread (OIIO::bind(do_tex_thread_workout,iterations,i));
+        threads.create_thread (std::bind(do_tex_thread_workout,iterations,i));
     }
     ASSERT ((int)threads.size() == numthreads);
     threads.join_all ();
@@ -981,7 +1243,7 @@ launch_tex_threads (int numthreads, int iterations)
 
 
 
-class GridImageInput : public ImageInput {
+class GridImageInput final : public ImageInput {
 public:
     GridImageInput () : m_miplevel(-1) { }
     virtual ~GridImageInput () { close(); }
@@ -1095,6 +1357,11 @@ main (int argc, const char *argv[])
     Filesystem::convert_native_arguments (argc, argv);
     getargs (argc, argv);
 
+    // environment variable TESTTEX_BATCH can force batch mode
+    string_view testtex_batch = Sysutil::getenv("TESTTEX_BATCH");
+    if (testtex_batch.size())
+        batch = Strutil::from_string<int>(testtex_batch);
+
     OIIO::attribute ("threads", nthreads);
 
     texsys = TextureSystem::create ();
@@ -1106,7 +1373,7 @@ main (int argc, const char *argv[])
     if (cachesize >= 0)
         texsys->attribute ("max_memory_MB", cachesize);
     else
-        texsys->getattribute ("max_memory_MB", TypeDesc::TypeFloat, &cachesize);
+        texsys->getattribute ("max_memory_MB", TypeFloat, &cachesize);
     if (maxfiles >= 0)
         texsys->attribute ("max_open_files", maxfiles);
     if (searchpath.length())
@@ -1185,7 +1452,7 @@ main (int argc, const char *argv[])
             int nt = wedge ? threadcounts[i] : nthreads;
             int its = iters>1 ? (std::max (1, iters/nt)) : iterations; // / nt;
             double range;
-            double t = time_trial (OIIO::bind(launch_tex_threads,nt,its),
+            double t = time_trial (std::bind(launch_tex_threads,nt,its),
                                    ntrials, &range);
             if (nt == 1)
                 single_thread_time = (float)t;
@@ -1205,20 +1472,39 @@ main (int argc, const char *argv[])
                                   TypeDesc::STRING, &texturetype);
         Timer timer;
         if (! strcmp (texturetype, "Plain Texture")) {
-            if (nowarp)
-                test_plain_texture (map_default);
-            else if (tube)
-                test_plain_texture (map_tube);
-            else if (filtertest)
-                test_plain_texture (map_filtertest);
-            else
-                test_plain_texture (map_warp);
+            if (batch) {
+                if (nowarp)
+                    test_plain_texture_batch (map_default);
+                else if (tube)
+                    test_plain_texture_batch (map_tube);
+                else if (filtertest)
+                    test_plain_texture_batch (map_filtertest);
+                else
+                    test_plain_texture_batch (map_warp);
+
+            } else {
+                if (nowarp)
+                    test_plain_texture (map_default);
+                else if (tube)
+                    test_plain_texture (map_tube);
+                else if (filtertest)
+                    test_plain_texture (map_filtertest);
+                else
+                    test_plain_texture (map_warp);
+            }
         }
         if (! strcmp (texturetype, "Volume Texture")) {
-            if (nowarp)
-                test_texture3d (filename, map_default_3D);
-            else
-                test_texture3d (filename, map_warp_3D);
+            if (batch) {
+                if (nowarp)
+                    test_texture3d_batch (filename, map_default_3D);
+                else
+                    test_texture3d_batch (filename, map_warp_3D);
+            } else {
+                if (nowarp)
+                    test_texture3d (filename, map_default_3D);
+                else
+                    test_texture3d (filename, map_warp_3D);
+            }
         }
         if (! strcmp (texturetype, "Shadow")) {
             test_shadow (filename);

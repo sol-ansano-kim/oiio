@@ -33,15 +33,15 @@
 #include <cstdio>
 #include <iostream>
 
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/strutil.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/strutil.h>
 #include "rgbe.h"
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
-class HdrOutput : public ImageOutput {
+class HdrOutput final : public ImageOutput {
  public:
     HdrOutput () { init(); }
     virtual ~HdrOutput () { close(); }
@@ -123,7 +123,7 @@ HdrOutput::open (const std::string &name, const ImageSpec &newspec,
     h.valid |= RGBE_VALID_PROGRAMTYPE;
     Strutil::safe_strcpy (h.programtype, "RADIANCE", sizeof(h.programtype));
 
-    ImageIOParameter *p;
+    ParamValue *p;
     p = m_spec.find_attribute ("Orientation", TypeDesc::INT);
     if (p) {
         h.valid |= RGBE_VALID_ORIENTATION;

@@ -28,9 +28,6 @@
   (This is the Modified BSD License)
 */
 
-#include "imageviewer.h"
-#include "ivgl.h"
-
 #include <iostream>
 #include <cmath>
 #ifndef WIN32
@@ -38,32 +35,33 @@
 #endif
 #include <vector>
 
-#include <boost/foreach.hpp>
+#include "imageviewer.h"
+#include "ivgl.h"
 
-#include <QtCore/QSettings>
-#include <QtCore/QTimer>
-#include <QtGui/QApplication>
-#include <QtGui/QComboBox>
-#include <QtGui/QDesktopWidget>
-#include <QtGui/QFileDialog>
-#include <QtGui/QKeyEvent>
-#include <QtGui/QLabel>
-#include <QtGui/QMenu>
-#include <QtGui/QMenuBar>
-#include <QtGui/QMessageBox>
-#include <QtGui/QProgressBar>
-#include <QtGui/QResizeEvent>
-#include <QtGui/QSpinBox>
-#include <QtGui/QStatusBar>
+#include <QSettings>
+#include <QTimer>
+#include <QApplication>
+#include <QComboBox>
+#include <QDesktopWidget>
+#include <QFileDialog>
+#include <QKeyEvent>
+#include <QLabel>
+#include <QMenu>
+#include <QMenuBar>
+#include <QMessageBox>
+#include <QProgressBar>
+#include <QResizeEvent>
+#include <QSpinBox>
+#include <QStatusBar>
 
 #include <OpenEXR/ImathFun.h>
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/timer.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/sysutil.h"
-#include "OpenImageIO/filesystem.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/timer.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/sysutil.h>
+#include <OpenImageIO/filesystem.h>
 #include "ivutils.h"
 
 
@@ -78,13 +76,14 @@ namespace
 
 
 static const char *s_file_filters = ""
-    "Image Files (*.bmp *.cin *.dds *.dpx *.f3d *.fits *.gif *.hdr *.ico *.iff "
+    "Image Files (*.bmp *.cin *.dcm *.dds *.dpx *.f3d *.fits *.gif *.hdr *.ico *.iff "
     "*.jpg *.jpe *.jpeg *.jif *.jfif *.jfi *.jp2 *.j2k *.exr *.png *.pbm *.pgm "
-    "*.ppm *.ptex *.rla *.sgi *.rgb *.rgba *.bw *.int *.inta *.pic *.tga "
-    "*.tpic *.tif *.tiff *.tx *.env *.sm *.vsm *.zfile);;"
+    "*.ppm *.psd *.ptex *.rla *.sgi *.rgb *.rgba *.bw *.int *.inta *.pic *.tga "
+    "*.tpic *.tif *.tiff *.tx *.env *.sm *.vsm *.webp *.zfile);;"
     "BMP (*.bmp);;"
     "Cineon (*.cin);;"
     "Direct Draw Surface (*.dds);;"
+    "DICOM (*.dcm);;"
     "DPX (*.dpx);;"
     "Field3D (*.f3d);;"
     "FITS (*.fits);;"
@@ -95,6 +94,7 @@ static const char *s_file_filters = ""
     "JPEG (*.jpg *.jpe *.jpeg *.jif *.jfif *.jfi);;"
     "JPEG-2000 (*.jp2 *.j2k);;"
     "OpenEXR (*.exr);;"
+    "PhotoShop (*.psd);;"
     "Portable Network Graphics (*.png);;"
     "PNM / Netpbm (*.pbm *.pgm *.ppm);;"
     "Ptex (*.ptex);;"
@@ -103,6 +103,7 @@ static const char *s_file_filters = ""
     "Softimage PIC (*.pic);;"
     "Targa (*.tga *.tpic);;"
     "TIFF (*.tif *.tiff *.tx *.env *.sm *.vsm);;"
+    "Webp (*.webp);;"
     "Zfile (*.zfile);;"
     "All Files (*)";
 
@@ -116,12 +117,9 @@ ImageViewer::ImageViewer ()
 {
     readSettings (false);
 
-    const char *gamenv = getenv ("GAMMA");
-    if (gamenv) {
-        float g = atof (gamenv);
-        if (g >= 0.1 && g <= 5)
-            m_default_gamma = g;
-    }
+    float gam = Strutil::stof (Sysutil::getenv ("GAMMA"));
+    if (gam >= 0.1 && gam <= 5)
+        m_default_gamma = gam;
     // FIXME -- would be nice to have a more nuanced approach to display
     // color space, in particular knowing whether the display is sRGB.
     // Also, some time in the future we may want a real 3D LUT for 
@@ -158,7 +156,7 @@ ImageViewer::ImageViewer ()
 
 ImageViewer::~ImageViewer ()
 {
-    BOOST_FOREACH (IvImage *i, m_images)
+    for (auto i : m_images)
         delete i;
 }
 
@@ -179,10 +177,10 @@ ImageViewer::createActions()
     openAct->setShortcut(tr("Ctrl+O"));
     connect(openAct, SIGNAL(triggered()), this, SLOT(open()));
 
-    for (size_t i = 0;  i < MaxRecentFiles;  ++i) {
-        openRecentAct[i] = new QAction (this);
-        openRecentAct[i]->setVisible (false);
-        connect (openRecentAct[i], SIGNAL(triggered()), this, SLOT(openRecentFile()));
+    for (auto& i : openRecentAct) {
+        i = new QAction (this);
+        i->setVisible (false);
+        connect (i, SIGNAL(triggered()), this, SLOT(openRecentFile()));
     }
 
     reloadAct = new QAction(tr("&Reload image"), this);
@@ -429,8 +427,8 @@ void
 ImageViewer::createMenus()
 {
     openRecentMenu = new QMenu(tr("Open recent..."), this);
-    for (size_t i = 0;  i < MaxRecentFiles;  ++i)
-        openRecentMenu->addAction (openRecentAct[i]);
+    for (auto& i : openRecentAct)
+        openRecentMenu->addAction (i);
 
     fileMenu = new QMenu(tr("&File"), this);
     fileMenu->addAction (openAct);
@@ -595,7 +593,7 @@ ImageViewer::readSettings (bool ui_is_set_up)
     linearInterpolationBox->setChecked (settings.value ("linearInterpolation").toBool());
     darkPaletteBox->setChecked (settings.value ("darkPalette").toBool());
     QStringList recent = settings.value ("RecentFiles").toStringList();
-    BOOST_FOREACH (const QString &s, recent)
+    for (auto&& s : recent)
         addRecentFile (s.toStdString());
     updateRecentFilesMenu (); // only safe because it's called after menu setup
 
@@ -626,7 +624,7 @@ ImageViewer::writeSettings()
     settings.setValue ("maxMemoryIC", maxMemoryIC->value());
     settings.setValue ("slideShowDuration", slideShowDuration->value());
     QStringList recent;
-    BOOST_FOREACH (const std::string &s, m_recent_files)
+    for (auto&& s : m_recent_files)
         recent.push_front (QString(s.c_str()));
     settings.setValue ("RecentFiles", recent);
 }
@@ -658,8 +656,8 @@ ImageViewer::open()
     QStringList names = dialog.selectedFiles();
 
     int old_lastimage = m_images.size()-1;
-    for (QStringList::Iterator it = names.begin();  it != names.end();  ++it) {
-        std::string filename = it->toUtf8().data();
+    for (auto& name : names) {
+        std::string filename = name.toUtf8().data();
         if (filename.empty())
             continue;
         add_image (filename);

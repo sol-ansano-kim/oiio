@@ -33,18 +33,18 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <functional>
 
-#include <boost/bind.hpp>
-
-#include "OpenImageIO/hash.h"
-#include "OpenImageIO/timer.h"
-#include "OpenImageIO/argparse.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/unittest.h"
-
+#include <OpenImageIO/hash.h>
+#include <OpenImageIO/timer.h>
+#include <OpenImageIO/benchmark.h>
+#include <OpenImageIO/argparse.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/unittest.h>
 
 
-OIIO_NAMESPACE_USING;
+
+using namespace OIIO;
 
 static int iterations = 100000000;
 static int ntrials = 1;
@@ -195,7 +195,7 @@ getargs (int argc, char *argv[])
 
 int main (int argc, char *argv[])
 {
-#if !defined(NDEBUG) || defined(OIIO_CI) || defined(OIIO_CODECOV)
+#if !defined(NDEBUG) || defined(OIIO_CI) || defined(OIIO_CODE_COVERAGE)
     // For the sake of test time, reduce the default iterations for DEBUG,
     // CI, and code coverage builds. Explicit use of --iters or --trials
     // will override this, since it comes before the getargs() call.
@@ -222,50 +222,50 @@ int main (int argc, char *argv[])
     std::cout << "BJ hash of big data as words: " 
               << Strutil::timeintervalformat(t, 2) << "\n";
 
-    t = time_trial (boost::bind(test_xxhash, &data[0], 2*sizeof(data[0])), ntrials);
+    t = time_trial (std::bind(test_xxhash, &data[0], 2*sizeof(data[0])), ntrials);
     std::cout << "XX hash of small data: " 
               << Strutil::timeintervalformat(t, 2) << "\n";
-    t = time_trial (boost::bind(test_xxhash, &data[0], data.size()*sizeof(data[0])), ntrials);
+    t = time_trial (std::bind(test_xxhash, &data[0], data.size()*sizeof(data[0])), ntrials);
     std::cout << "XX hash of big data: " 
               << Strutil::timeintervalformat(t, 2) << "\n";
 
-    t = time_trial (boost::bind(test_bjstrhash, shortstring), ntrials);
+    t = time_trial (std::bind(test_bjstrhash, shortstring), ntrials);
     std::cout << "BJ strhash hash of short string: "
               << Strutil::timeintervalformat(t, 2) << "\n";
-    t = time_trial (boost::bind(test_bjstrhash, medstring), ntrials);
+    t = time_trial (std::bind(test_bjstrhash, medstring), ntrials);
     std::cout << "BJ strhash hash of medium string: "
               << Strutil::timeintervalformat(t, 2) << "\n";
-    t = time_trial (boost::bind(test_bjstrhash, longstring), ntrials);
+    t = time_trial (std::bind(test_bjstrhash, longstring), ntrials);
     std::cout << "BJ strhash hash of long string: "
               << Strutil::timeintervalformat(t, 2) << "\n";
 
-    t = time_trial (boost::bind(test_farmhashstr, shortstring), ntrials);
+    t = time_trial (std::bind(test_farmhashstr, shortstring), ntrials);
     std::cout << "farmhash of short string: "
               << Strutil::timeintervalformat(t, 2) << "\n";
-    t = time_trial (boost::bind(test_farmhashstr, medstring), ntrials);
+    t = time_trial (std::bind(test_farmhashstr, medstring), ntrials);
     std::cout << "farmhash of medium string: "
               << Strutil::timeintervalformat(t, 2) << "\n";
-    t = time_trial (boost::bind(test_farmhashstr, longstring), ntrials);
+    t = time_trial (std::bind(test_farmhashstr, longstring), ntrials);
     std::cout << "farmhash of long string: "
               << Strutil::timeintervalformat(t, 2) << "\n";
 
-    t = time_trial (boost::bind(test_farmhashchar, shortstring.c_str()), ntrials);
+    t = time_trial (std::bind(test_farmhashchar, shortstring.c_str()), ntrials);
     std::cout << "farmhash of short char*: "
               << Strutil::timeintervalformat(t, 2) << "\n";
-    t = time_trial (boost::bind(test_farmhashchar, medstring.c_str()), ntrials);
+    t = time_trial (std::bind(test_farmhashchar, medstring.c_str()), ntrials);
     std::cout << "farmhash of medium char*: "
               << Strutil::timeintervalformat(t, 2) << "\n";
-    t = time_trial (boost::bind(test_farmhashchar, longstring.c_str()), ntrials);
+    t = time_trial (std::bind(test_farmhashchar, longstring.c_str()), ntrials);
     std::cout << "farmhash of long char*: "
               << Strutil::timeintervalformat(t, 2) << "\n";
 
-    t = time_trial (boost::bind(test_xxhash, shortstring.c_str(), shortstring.length()), ntrials);
+    t = time_trial (std::bind(test_xxhash, shortstring.c_str(), shortstring.length()), ntrials);
     std::cout << "xxhash XH64 of short string: "
               << Strutil::timeintervalformat(t, 2) << "\n";
-    t = time_trial (boost::bind(test_xxhash, medstring.c_str(), medstring.length()), ntrials);
+    t = time_trial (std::bind(test_xxhash, medstring.c_str(), medstring.length()), ntrials);
     std::cout << "xxhash XH64 of medium string: "
               << Strutil::timeintervalformat(t, 2) << "\n";
-    t = time_trial (boost::bind(test_xxhash, longstring.c_str(), longstring.length()), ntrials);
+    t = time_trial (std::bind(test_xxhash, longstring.c_str(), longstring.length()), ntrials);
     std::cout << "xxhash XH64 of long string: "
               << Strutil::timeintervalformat(t, 2) << "\n";
 

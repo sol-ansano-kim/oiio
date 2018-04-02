@@ -31,16 +31,18 @@
 #include <OpenEXR/half.h>
 
 #include <cmath>
+#include <limits>
+#include <algorithm>
 
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagebufalgo.h"
-#include "OpenImageIO/imagebufalgo_util.h"
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/sysutil.h"
-#include "OpenImageIO/filter.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/hash.h"
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
+#include <OpenImageIO/imagebufalgo_util.h>
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/sysutil.h>
+#include <OpenImageIO/filter.h>
+#include <OpenImageIO/thread.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/hash.h>
 
 #ifdef USE_FREETYPE
 #include <ft2build.h>
@@ -55,19 +57,11 @@ template<typename T>
 static bool
 fill_const_ (ImageBuf &dst, const float *values, ROI roi=ROI(), int nthreads=1)
 {
-    if (nthreads != 1 && roi.npixels() >= 1000) {
-        // Lots of pixels and request for multi threads? Parallelize.
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(fill_const_<T>, OIIO::ref(dst), values,
-                        _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
-
-    // Serial case
-    for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p)
-        for (int c = roi.chbegin;  c < roi.chend;  ++c)
-            p[c] = values[c];
+    ImageBufAlgo::parallel_image (roi, nthreads, [&](ROI roi){
+        for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p)
+            for (int c = roi.chbegin;  c < roi.chend;  ++c)
+                p[c] = values[c];
+    });
     return true;
 }
 
@@ -77,22 +71,14 @@ static bool
 fill_tb_ (ImageBuf &dst, const float *top, const float *bottom,
        ROI origroi, ROI roi=ROI(), int nthreads=1)
 {
-    if (nthreads != 1 && roi.npixels() >= 1000) {
-        // Lots of pixels and request for multi threads? Parallelize.
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(fill_tb_<T>, OIIO::ref(dst), top, bottom,
-                        origroi, _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
-
-    // Serial case
-    float h = std::max (1, origroi.height() - 1);
-    for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
-        float v = (p.y() - origroi.ybegin) / h;
-        for (int c = roi.chbegin;  c < roi.chend;  ++c)
-            p[c] = lerp (top[c], bottom[c], v);
-    }
+    ImageBufAlgo::parallel_image (roi, nthreads, [&](ROI roi){
+        float h = std::max (1, origroi.height() - 1);
+        for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
+            float v = (p.y() - origroi.ybegin) / h;
+            for (int c = roi.chbegin;  c < roi.chend;  ++c)
+                p[c] = lerp (top[c], bottom[c], v);
+        }
+    });
     return true;
 }
 
@@ -103,26 +89,17 @@ fill_corners_ (ImageBuf &dst, const float *topleft, const float *topright,
        const float *bottomleft, const float *bottomright,
        ROI origroi, ROI roi=ROI(), int nthreads=1)
 {
-    if (nthreads != 1 && roi.npixels() >= 1000) {
-        // Lots of pixels and request for multi threads? Parallelize.
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(fill_corners_<T>, OIIO::ref(dst), topleft, topright,
-                        bottomleft, bottomright,
-                        origroi, _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
-
-    // Serial case
-    float w = std::max (1, origroi.width() - 1);
-    float h = std::max (1, origroi.height() - 1);
-    for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
-        float u = (p.x() - origroi.xbegin) / w;
-        float v = (p.y() - origroi.ybegin) / h;
-        for (int c = roi.chbegin;  c < roi.chend;  ++c)
-            p[c] = bilerp (topleft[c], topright[c],
-                           bottomleft[c], bottomright[c], u, v);
-    }
+    ImageBufAlgo::parallel_image (roi, nthreads, [&](ROI roi){
+        float w = std::max (1, origroi.width() - 1);
+        float h = std::max (1, origroi.height() - 1);
+        for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
+            float u = (p.x() - origroi.xbegin) / w;
+            float v = (p.y() - origroi.ybegin) / h;
+            for (int c = roi.chbegin;  c < roi.chend;  ++c)
+                p[c] = bilerp (topleft[c], topright[c],
+                               bottomleft[c], bottomright[c], u, v);
+        }
+    });
     return true;
 }
 
@@ -362,31 +339,23 @@ static bool
 render_box_ (ImageBuf &dst, array_view<const float> color,
              ROI roi=ROI(), int nthreads=1)
 {
-    if (nthreads != 1 && roi.npixels() >= 1000) {
-        // Lots of pixels and request for multi threads? Parallelize.
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(render_box_<T>, OIIO::ref(dst), color,
-                        _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
+    ImageBufAlgo::parallel_image (roi, nthreads, [&](ROI roi){
+        float alpha = 1.0f;
+        if (dst.spec().alpha_channel >= 0 && dst.spec().alpha_channel < int(color.size()))
+            alpha = color[dst.spec().alpha_channel];
+        else if (int(color.size()) == roi.chend+1)
+            alpha = color[roi.chend];
 
-    // Serial case
-    float alpha = 1.0f;
-    if (dst.spec().alpha_channel >= 0 && dst.spec().alpha_channel < int(color.size()))
-        alpha = color[dst.spec().alpha_channel];
-    else if (int(color.size()) == roi.chend+1)
-        alpha = color[roi.chend];
-
-    if (alpha == 1.0f) {
-        for (ImageBuf::Iterator<T> r (dst, roi);  !r.done();  ++r)
-            for (int c = roi.chbegin;  c < roi.chend;  ++c)
-                r[c] = color[c];
-    } else {
-        for (ImageBuf::Iterator<T> r (dst, roi);  !r.done();  ++r)
-            for (int c = roi.chbegin;  c < roi.chend;  ++c)
-                r[c] = color[c] + r[c] * (1.0f-alpha);  // "over"
-    }
+        if (alpha == 1.0f) {
+            for (ImageBuf::Iterator<T> r (dst, roi);  !r.done();  ++r)
+                for (int c = roi.chbegin;  c < roi.chend;  ++c)
+                    r[c] = color[c];
+        } else {
+            for (ImageBuf::Iterator<T> r (dst, roi);  !r.done();  ++r)
+                for (int c = roi.chbegin;  c < roi.chend;  ++c)
+                    r[c] = color[c] + r[c] * (1.0f-alpha);  // "over"
+        }
+    });
     return true;
 }
 
@@ -442,29 +411,20 @@ checker_ (ImageBuf &dst, Dim3 size,
           Dim3 offset,
           ROI roi, int nthreads=1)
 {
-    if (nthreads != 1 && roi.npixels() >= 1000) {
-        // Lots of pixels and request for multi threads? Parallelize.
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(checker_<T>, OIIO::ref(dst),
-                        size, color1, color2, offset,
-                        _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
-
-    // Serial case
-    for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
-        int xtile = (p.x()-offset.x)/size.x;  xtile += (p.x()<offset.x);
-        int ytile = (p.y()-offset.y)/size.y;  ytile += (p.y()<offset.y);
-        int ztile = (p.z()-offset.z)/size.z;  ztile += (p.z()<offset.z);
-        int v = xtile + ytile + ztile;
-        if (v & 1)
-            for (int c = roi.chbegin;  c < roi.chend;  ++c)
-                p[c] = color2[c];
-        else
-            for (int c = roi.chbegin;  c < roi.chend;  ++c)
-                p[c] = color1[c];
-    }
+    ImageBufAlgo::parallel_image (roi, nthreads, [&](ROI roi){
+        for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
+            int xtile = (p.x()-offset.x)/size.x;  xtile += (p.x()<offset.x);
+            int ytile = (p.y()-offset.y)/size.y;  ytile += (p.y()<offset.y);
+            int ztile = (p.z()-offset.z)/size.z;  ztile += (p.z()<offset.z);
+            int v = xtile + ytile + ztile;
+            if (v & 1)
+                for (int c = roi.chbegin;  c < roi.chend;  ++c)
+                    p[c] = color2[c];
+            else
+                for (int c = roi.chbegin;  c < roi.chend;  ++c)
+                    p[c] = color1[c];
+        }
+    });
     return true;
 }
 
@@ -525,26 +485,17 @@ static bool
 noise_uniform_ (ImageBuf &dst, float min, float max, bool mono,
                 int seed, ROI roi, int nthreads)
 {
-    if (nthreads != 1 && roi.npixels() >= 1000) {
-        // Lots of pixels and request for multi threads? Parallelize.
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(noise_uniform_<T>, OIIO::ref(dst),
-                        min, max, mono, seed,
-                        _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
-
-    // Serial case
-    for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
-        int x = p.x(), y = p.y(), z = p.z();
-        float n = 0.0;
-        for (int c = roi.chbegin;  c < roi.chend;  ++c) {
-            if (c == roi.chbegin || !mono)
-                n = lerp (min, max, hashrand (x, y, z, c, seed));
-            p[c] = p[c] + n;
+    ImageBufAlgo::parallel_image (roi, nthreads, [&](ROI roi){
+        for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
+            int x = p.x(), y = p.y(), z = p.z();
+            float n = 0.0;
+            for (int c = roi.chbegin;  c < roi.chend;  ++c) {
+                if (c == roi.chbegin || !mono)
+                    n = lerp (min, max, hashrand (x, y, z, c, seed));
+                p[c] = p[c] + n;
+            }
         }
-    }
+    });
     return true;
 }
 
@@ -555,26 +506,17 @@ static bool
 noise_gaussian_ (ImageBuf &dst, float mean, float stddev, bool mono,
                  int seed, ROI roi, int nthreads)
 {
-    if (nthreads != 1 && roi.npixels() >= 1000) {
-        // Lots of pixels and request for multi threads? Parallelize.
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(noise_gaussian_<T>, OIIO::ref(dst),
-                        mean, stddev, mono, seed,
-                        _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
-
-    // Serial case
-    for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
-        int x = p.x(), y = p.y(), z = p.z();
-        float n = 0.0;
-        for (int c = roi.chbegin;  c < roi.chend;  ++c) {
-            if (c == roi.chbegin || !mono)
-                n = mean + stddev * hashnormal (x, y, z, c, seed);
-            p[c] = p[c] + n;
+    ImageBufAlgo::parallel_image (roi, nthreads, [&](ROI roi){
+        for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
+            int x = p.x(), y = p.y(), z = p.z();
+            float n = 0.0;
+            for (int c = roi.chbegin;  c < roi.chend;  ++c) {
+                if (c == roi.chbegin || !mono)
+                    n = mean + stddev * hashnormal (x, y, z, c, seed);
+                p[c] = p[c] + n;
+            }
         }
-    }
+    });
     return true;
 }
 
@@ -585,27 +527,18 @@ static bool
 noise_salt_ (ImageBuf &dst, float saltval, float saltportion, bool mono,
              int seed, ROI roi, int nthreads)
 {
-    if (nthreads != 1 && roi.npixels() >= 1000) {
-        // Lots of pixels and request for multi threads? Parallelize.
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(noise_salt_<T>, OIIO::ref(dst),
-                        saltval, saltportion, mono, seed,
-                        _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
-
-    // Serial case
-    for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
-        int x = p.x(), y = p.y(), z = p.z();
-        float n = 0.0;
-        for (int c = roi.chbegin;  c < roi.chend;  ++c) {
-            if (c == roi.chbegin || !mono)
-                n = hashrand (x, y, z, c, seed);
-            if (n < saltportion)
-                p[c] = saltval;
+    ImageBufAlgo::parallel_image (roi, nthreads, [&](ROI roi){
+        for (ImageBuf::Iterator<T> p (dst, roi);  !p.done();  ++p) {
+            int x = p.x(), y = p.y(), z = p.z();
+            float n = 0.0;
+            for (int c = roi.chbegin;  c < roi.chend;  ++c) {
+                if (c == roi.chbegin || !mono)
+                    n = hashrand (x, y, z, c, seed);
+                if (n < saltportion)
+                    p[c] = saltval;
+            }
         }
-    }
+    });
     return true;
 }
 
@@ -643,69 +576,95 @@ namespace { // anon
 static mutex ft_mutex;
 static FT_Library ft_library = NULL;
 static bool ft_broken = false;
+static std::vector<std::string> font_search_dirs;
 static const char * default_font_name[] = {
         "DroidSans", "cour", "Courier New", "FreeMono", NULL
      };
-} // anon namespace
-#endif
 
-
-bool
-ImageBufAlgo::render_text (ImageBuf &R, int x, int y, string_view text,
-                           int fontsize, string_view font_,
-                           const float *textcolor)
+// Helper: given unicode and a font face, compute its size
+static ROI
+text_size_from_unicode (std::vector<uint32_t> &utext, FT_Face face)
 {
-    if (R.spec().depth > 1) {
-        R.error ("ImageBufAlgo::render_text does not support volume images");
-        return false;
+    ROI size;
+    size.xbegin = size.ybegin = std::numeric_limits<int>::max();
+    size.xend = size.yend = std::numeric_limits<int>::min();
+    FT_GlyphSlot slot = face->glyph;
+    int x = 0;
+    for (auto ch : utext) {
+        int error = FT_Load_Char (face, ch, FT_LOAD_RENDER);
+        if (error)
+            continue;  // ignore errors
+        size.ybegin = std::min (size.ybegin, -slot->bitmap_top);
+        size.yend = std::max (size.yend, int(slot->bitmap.rows) - int(slot->bitmap_top) + 1);
+        size.xbegin = std::min (size.xbegin, x + int(slot->bitmap_left));
+        size.xend = std::max (size.xend, x + int(slot->bitmap.width) + int(slot->bitmap_left) + 1);
+        // increment pen position
+        x += slot->advance.x >> 6;
     }
+    return size;   // Font rendering not supported
+}
 
-#ifdef USE_FREETYPE
+
+
+// Given font name, resolve it to an existing font filename.
+// If found, return true and put the resolved filename in result.
+// If not found, return false and put an error message in result.
+// Not thread-safe! The caller must use the mutex.
+static bool
+resolve_font (int fontsize, string_view font_, std::string &result)
+{
+    result.clear ();
+
     // If we know FT is broken, don't bother trying again
     if (ft_broken)
         return false;
 
-    // Thread safety
-    lock_guard ft_lock (ft_mutex);
-    int error = 0;
-
     // If FT not yet initialized, do it now.
     if (! ft_library) {
-        error = FT_Init_FreeType (&ft_library);
-        if (error) {
+        if (FT_Init_FreeType (&ft_library)) {
             ft_broken = true;
-            R.error ("Could not initialize FreeType for font rendering");
+            result = "Could not initialize FreeType for font rendering";
             return false;
         }
     }
 
     // A set of likely directories for fonts to live, across several systems.
-    std::vector<std::string> search_dirs;
-    const char *home = getenv ("HOME");
-    if (home && *home) {
-        std::string h (home);
-        search_dirs.push_back (h + "/fonts");
-        search_dirs.push_back (h + "/Fonts");
-        search_dirs.push_back (h + "/Library/Fonts");
-    }
-    const char *systemRoot = getenv ("SystemRoot");
-    if (systemRoot && *systemRoot)
-        search_dirs.push_back (std::string(systemRoot) + "/Fonts");
-    search_dirs.push_back ("/usr/share/fonts");
-    search_dirs.push_back ("/Library/Fonts");
-    search_dirs.push_back ("C:/Windows/Fonts");
-    search_dirs.push_back ("/usr/local/share/fonts");
-    search_dirs.push_back ("/opt/local/share/fonts");
-    // Try $OPENIMAGEIOHOME/fonts
-    const char *oiiohomedir = getenv ("OPENIMAGEIOHOME");
-    if (oiiohomedir && *oiiohomedir)
-        search_dirs.push_back (std::string(oiiohomedir) + "/fonts");
-    // Try ../fonts relative to where this executing binary came from
-    std::string this_program = OIIO::Sysutil::this_program_path ();
-    if (this_program.size()) {
-        std::string path = Filesystem::parent_path (this_program);
-        path = Filesystem::parent_path (path);
-        search_dirs.push_back (path+"/fonts");
+    // Fill out the list of search dirs if not yet done.
+    if (font_search_dirs.size() == 0) {
+        string_view home = Sysutil::getenv ("HOME");
+        if (home.size()) {
+            std::string h (home);
+            font_search_dirs.push_back (h + "/fonts");
+            font_search_dirs.push_back (h + "/Fonts");
+            font_search_dirs.push_back (h + "/Library/Fonts");
+        }
+        string_view systemRoot = Sysutil::getenv ("SystemRoot");
+        if (systemRoot.size())
+            font_search_dirs.push_back (std::string(systemRoot) + "/Fonts");
+        font_search_dirs.emplace_back ("/usr/share/fonts");
+        font_search_dirs.emplace_back ("/usr/share/fonts/OpenImageIO");
+        font_search_dirs.emplace_back ("/Library/Fonts");
+        font_search_dirs.emplace_back ("/Library/Fonts/OpenImageIO");
+        font_search_dirs.emplace_back ("C:/Windows/Fonts");
+        font_search_dirs.emplace_back ("C:/Windows/Fonts/OpenImageIO");
+        font_search_dirs.emplace_back ("/usr/local/share/fonts");
+        font_search_dirs.emplace_back ("/usr/local/share/fonts/OpenImageIO");
+        font_search_dirs.emplace_back ("/opt/local/share/fonts");
+        font_search_dirs.emplace_back ("/opt/local/share/fonts/OpenImageIO");
+        // Try $OPENIMAGEIOHOME/fonts
+        string_view oiiohomedir = Sysutil::getenv ("OPENIMAGEIOHOME");
+        if (oiiohomedir.size()) {
+            font_search_dirs.push_back (std::string(oiiohomedir) + "/fonts");
+            font_search_dirs.push_back (std::string(oiiohomedir) + "/share/fonts/OpenImageIO");
+        }
+        // Try ../fonts relative to where this executing binary came from
+        std::string this_program = OIIO::Sysutil::this_program_path ();
+        if (this_program.size()) {
+            std::string path = Filesystem::parent_path (this_program);
+            path = Filesystem::parent_path (path);
+            font_search_dirs.push_back (path+"/fonts");
+            font_search_dirs.push_back (path+"/shared/fonts/OpenImageIO");
+        }
     }
 
     // Try to find the font.  Experiment with several extensions
@@ -716,10 +675,10 @@ ImageBufAlgo::render_text (ImageBuf &R, int x, int y, string_view text,
             static const char *extensions[] = { "", ".ttf", ".pfa", ".pfb", NULL };
             for (int i = 0;  font.empty() && extensions[i];  ++i)
                 font = Filesystem::searchpath_find (std::string(default_font_name[j])+extensions[i],
-                                                 search_dirs, true, true);
+                                                 font_search_dirs, true, true);
         }
         if (font.empty()) {
-            R.error ("Could not set default font face");
+            result = "Could not set default font face";
             return false;
         }
     } else if (Filesystem::is_regular (font)) {
@@ -730,9 +689,9 @@ ImageBufAlgo::render_text (ImageBuf &R, int x, int y, string_view text,
         static const char *extensions[] = { "", ".ttf", ".pfa", ".pfb", NULL };
         for (int i = 0;  f.empty() && extensions[i];  ++i)
             f = Filesystem::searchpath_find (font+extensions[i],
-                                             search_dirs, true, true);
+                                             font_search_dirs, true, true);
         if (f.empty()) {
-            R.error ("Could not set font face to \"%s\"", font);
+            result = Strutil::format ("Could not set font face to \"%s\"", font);
             return false;
         }
         font = f;
@@ -740,10 +699,115 @@ ImageBufAlgo::render_text (ImageBuf &R, int x, int y, string_view text,
 
     ASSERT (! font.empty());
     if (! Filesystem::is_regular (font)) {
-        R.error ("Could not find font \"%s\"", font);
+        result = Strutil::format ("Could not find font \"%s\"", font);
         return false;
     }
 
+    // Success
+    result = font;
+    return true;
+}
+
+} // anon namespace
+#endif
+
+
+
+ROI
+ImageBufAlgo::text_size (string_view text, int fontsize, string_view font_)
+{
+    ROI size;
+#ifdef USE_FREETYPE
+    // Thread safety
+    lock_guard ft_lock (ft_mutex);
+
+    std::string font;
+    bool ok = resolve_font (fontsize, font_, font);
+    if (! ok) {
+        return size;
+    }
+
+    int error = 0;
+    FT_Face face;      // handle to face object
+    error = FT_New_Face (ft_library, font.c_str(), 0 /* face index */, &face);
+    if (error) {
+        return size;  // couldn't open the face
+    }
+
+    error = FT_Set_Pixel_Sizes (face /*handle*/, 0 /*width*/, fontsize/*height*/);
+    if (error) {
+        FT_Done_Face (face);
+        return size;  // couldn't set the character size
+    }
+
+    FT_GlyphSlot slot = face->glyph;  // a small shortcut
+
+    std::vector<uint32_t> utext;
+    utext.reserve(text.size()); //Possible overcommit, but most text will be ascii
+    Strutil::utf8_to_unicode(text, utext);
+
+    size.xbegin = size.ybegin = std::numeric_limits<int>::max();
+    size.xend = size.yend = std::numeric_limits<int>::min();
+    int x = 0;
+    for (auto ch : utext) {
+        error = FT_Load_Char (face, ch, FT_LOAD_RENDER);
+        if (error)
+            continue;  // ignore errors
+        size.ybegin = std::min (size.ybegin, -slot->bitmap_top);
+        size.yend = std::max (size.yend, int(slot->bitmap.rows) - int(slot->bitmap_top) + 1);
+        size.xbegin = std::min (size.xbegin, x + int(slot->bitmap_left));
+        size.xend = std::max (size.xend, x + int(slot->bitmap.width) + int(slot->bitmap_left) + 1);
+        // increment pen position
+        x += slot->advance.x >> 6;
+    }
+
+    FT_Done_Face (face);
+#endif
+
+    return size;   // Font rendering not supported
+}
+
+
+
+// Deprecated version
+bool
+ImageBufAlgo::render_text (ImageBuf &R, int x, int y, string_view text,
+                           int fontsize, string_view font_,
+                           const float *textcolor)
+{
+    array_view<const float> color;
+    if (textcolor)
+        color = array_view<const float>(textcolor,R.nchannels());
+    return render_text (R, x, y, text, fontsize, font_, color);
+}
+
+
+
+bool
+ImageBufAlgo::render_text (ImageBuf &R, int x, int y, string_view text,
+                           int fontsize, string_view font_,
+                           array_view<const float> textcolor,
+                           TextAlignX alignx, TextAlignY aligny,
+                           int shadow, ROI roi, int nthreads)
+{
+    if (R.spec().depth > 1) {
+        R.error ("ImageBufAlgo::render_text does not support volume images");
+        return false;
+    }
+
+#ifdef USE_FREETYPE
+    // Thread safety
+    lock_guard ft_lock (ft_mutex);
+
+    std::string font;
+    bool ok = resolve_font (fontsize, font_, font);
+    if (! ok) {
+        std::string err = font.size() ? font : "Font error";
+        R.error ("%s", err);
+        return false;
+    }
+
+    int error = 0;
     FT_Face face;      // handle to face object
     error = FT_New_Face (ft_library, font.c_str(), 0 /* face index */, &face);
     if (error) {
@@ -751,9 +815,7 @@ ImageBufAlgo::render_text (ImageBuf &R, int x, int y, string_view text,
         return false;  // couldn't open the face
     }
 
-    error = FT_Set_Pixel_Sizes (face,        // handle to face object
-                                0,           // pixel_width
-                                fontsize);   // pixel_heigh
+    error = FT_Set_Pixel_Sizes (face /*handle*/, 0 /*width*/, fontsize/*height*/);
     if (error) {
         FT_Done_Face (face);
         R.error ("Could not set font size to %d", fontsize);
@@ -761,21 +823,47 @@ ImageBufAlgo::render_text (ImageBuf &R, int x, int y, string_view text,
     }
 
     FT_GlyphSlot slot = face->glyph;  // a small shortcut
-    int nchannels = R.spec().nchannels;
-    float *pixelcolor = ALLOCA (float, nchannels);
-    if (! textcolor) {
+    size_t nchannels (R.spec().nchannels);
+    if (textcolor.size() <= nchannels) {
         float *localtextcolor = ALLOCA (float, nchannels);
-        for (int c = 0;  c < nchannels;  ++c)
-            localtextcolor[c] = 1.0f;
-        textcolor = localtextcolor;
+        for (size_t c = 0;  c < nchannels;  ++c)
+            localtextcolor[c] = c < textcolor.size() ? textcolor[c] : 1.0f;
+        textcolor = array_view<const float>(localtextcolor, nchannels);
     }
 
+    // Convert the UTF to 32 bit unicode
     std::vector<uint32_t> utext;
     utext.reserve(text.size()); //Possible overcommit, but most text will be ascii
     Strutil::utf8_to_unicode(text, utext);
 
-    for (size_t n = 0, e = utext.size();  n < e;  ++n) {
-        error = FT_Load_Char (face, utext[n], FT_LOAD_RENDER);
+    // Compute the size that the text will render as, into an ROI
+    ROI textroi = text_size_from_unicode (utext, face);
+    textroi.zbegin = 0; textroi.zend = 1;
+    textroi.chbegin = 0; textroi.chend = 1;
+
+    // Adjust position for alignment requests
+    if (alignx == TextAlignX::Right)
+        x -= textroi.width();
+    if (alignx == TextAlignX::Center)
+        x -= (textroi.width()/2 + textroi.xbegin);
+    if (aligny == TextAlignY::Top)
+        y += textroi.height();
+    if (aligny == TextAlignY::Bottom)
+        y -= textroi.height();
+    if (aligny == TextAlignY::Center)
+        y -= (textroi.height()/2 + textroi.ybegin);
+
+    // Pad bounds for shadowing
+    textroi.xbegin += x - shadow;  textroi.xend += x + shadow;
+    textroi.ybegin += y - shadow;  textroi.yend += y + shadow;
+
+    // Create a temp buffer of the right size and render the text into it.
+    ImageBuf textimg (ImageSpec(textroi, TypeDesc::FLOAT));
+    ImageBufAlgo::zero (textimg);
+
+    // Glyph by glyph, fill in our txtimg buffer
+    for (auto ch : utext) {
+        int error = FT_Load_Char (face, ch, FT_LOAD_RENDER);
         if (error)
             continue;  // ignore errors
         // now, draw to our target surface
@@ -784,14 +872,39 @@ ImageBufAlgo::render_text (ImageBuf &R, int x, int y, string_view text,
             for (int i = 0;  i < static_cast<int>(slot->bitmap.width); ++i) {
                 int rx = x + i + slot->bitmap_left;
                 float b = slot->bitmap.buffer[slot->bitmap.pitch*j+i] / 255.0f;
-                R.getpixel (rx, ry, pixelcolor);
-                for (int c = 0;  c < nchannels;  ++c)
-                    pixelcolor[c] = b*textcolor[c] + (1.0f-b) * pixelcolor[c];
-                R.setpixel (rx, ry, pixelcolor);
+                textimg.setpixel (rx, ry, &b, 1);
             }
         }
         // increment pen position
         x += slot->advance.x >> 6;
+    }
+
+    // Generate the alpha image -- if drop shadow is requested, dilate,
+    // otherwise it's just a copy of the text image
+    ImageBuf alphaimg;
+    if (shadow)
+        dilate (alphaimg, textimg, 2*shadow+1);
+    else
+        alphaimg.copy (textimg);
+
+    if (! roi.defined())
+        roi = textroi;
+    if (! IBAprep (roi, &R))
+        return false;
+    roi = roi_intersection (textroi, R.roi());
+
+    // Now fill in the pixels of our destination image
+    float *pixelcolor = ALLOCA (float, nchannels);
+    ImageBuf::ConstIterator<float> t (textimg, roi, ImageBuf::WrapBlack);
+    ImageBuf::ConstIterator<float> a (alphaimg, roi, ImageBuf::WrapBlack);
+    ImageBuf::Iterator<float> r (R, roi);
+    for ( ;  !r.done();  ++r, ++t, ++a) {
+        float val = t[0];
+        float alpha = a[0];
+        R.getpixel (r.x(), r.y(), pixelcolor);
+        for (size_t c = 0;  c < nchannels;  ++c)
+            pixelcolor[c] = val*textcolor[c] + (1.0f-alpha) * pixelcolor[c];
+        R.setpixel (r.x(), r.y(), pixelcolor);
     }
 
     FT_Done_Face (face);

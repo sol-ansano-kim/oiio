@@ -21,7 +21,7 @@ endif
 #   release versions on the svn server.
 #
 
-OPENIMAGEIO_SPCOMP2_VERSION=41
+OPENIMAGEIO_SPCOMP2_VERSION=42
 
 # Default namespace
 NAMESPACE ?= 'OpenImageIO_SPI'
@@ -30,6 +30,8 @@ SOVERSION ?= ${OPENIMAGEIO_SPCOMP2_VERSION}
 SPCOMP2_SHOTTREE_LOCATION = /shots/spi/home/lib/SpComp2
 INSTALL_SPCOMP2_LOCATION = /shots/spi/home/lib/SpComp2
 NUKE_VERSION ?= 10.0v4
+PYLIB_LIB_PREFIX ?= 1
+PYLIB_INCLUDE_SONAME ?= 1
 CPPSTDSUFFIX=
 
 
@@ -66,14 +68,17 @@ OIIO_SPCOMP2_PATH ?= ${SPCOMP2_SHOTTREE_LOCATION}/OpenImageIO/${SP_OS}-${SPCOMP2
 
 ## Rhel7 (current)
 ifeq ($(SP_OS), rhel7)
-    USE_CPP11 ?= 1
-    USE_SIMD = sse4.1
-    USE_NINJA ?= 1
-    NINJA ?= ninja
+    USE_CPP ?= 11
+    USE_SIMD ?= sse4.1
     CMAKE ?= cmake
+    USE_NINJA ?= 0
+    NINJA ?= ninja
     ifeq ($(USE_NINJA),1)
         MY_CMAKE_FLAGS += -DCMAKE_MAKE_PROGRAM=${NINJA}
     endif
+    export CCACHE_CPP2 ?= 1
+    # Override lib64 and use SPI convention of lib
+    MY_CMAKE_FLAGS += -DCMAKE_INSTALL_LIBDIR="${working_dir}/dist/${platform}${variant}/lib"
     BOOSTVERS ?= 1.55
     SPCOMP2_USE_BOOSTVERS ?= 1
     BOOSTSPSUFFIX ?= sp
@@ -91,28 +96,25 @@ ifeq ($(SP_OS), rhel7)
 #    FIELD3D_HOME ?= ${SPCOMP2_SHOTTREE_LOCATION}/Field3D/${SP_OS}-${SPCOMP2_COMPILER}-boost155${BOOSTSPSUFFIX}/v408
     OIIO_SPCOMP2_PATH := ${SPCOMP2_SHOTTREE_LOCATION}/OpenImageIO/${SP_OS}-${SPCOMP2_COMPILER}$(CPPSTDSUFFIX)-boost${SPCOMP2_BOOSTVERS_SUFFIX}/v${OPENIMAGEIO_SPCOMP2_VERSION}
     $(info New rhel7 OIIO_SPCOMP2_PATH is ${OIIO_SPCOMP2_PATH})
-    USE_OPENCV ?= 0
 
     ## If not overridden, here is our preferred LLVM installation
     ## (may be changed as new versions are rolled out to the facility)
-    LLVM_DIRECTORY ?= /shots/spi/home/lib/arnold/spinux1/llvm_3.4.2
+    LLVM_DIRECTORY ?= /shots/spi/home/lib/arnold/rhel7/llvm_4.0_final
 
     # A variety of tags can be used to try specific versions of gcc or
     # clang from the site-specific places we have installed them.
-    ifeq (${COMPILER}, clang342)
-        MY_CMAKE_FLAGS += \
-           -DCMAKE_C_COMPILER=/shots/spi/home/lib/arnold/spinux1/llvm_3.4.2/bin/clang \
-           -DCMAKE_CXX_COMPILER=/shots/spi/home/lib/arnold/spinux1/llvm_3.4.2/bin/clang++
-    else ifeq (${COMPILER}, gcc472)
-      MY_CMAKE_FLAGS += \
-         -DCMAKE_C_COMPILER=/net/soft_scratch/apps/arnold/tools/gcc-4.7.2-test/bin/gcc \
-         -DCMAKE_CXX_COMPILER=/net/soft_scratch/apps/arnold/tools/gcc-4.7.2-test/bin/g++
+    ifeq (${COMPILER},clang4)
+	LLVM_DIRECTORY := /shots/spi/home/lib/arnold/rhel7/llvm_4.0_final
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=${LLVM_DIRECTORY}/bin/clang -DCMAKE_CXX_COMPILER=${LLVM_DIRECTORY}/bin/clang++
+    else ifeq (${COMPILER},clang5)
+	LLVM_DIRECTORY := /shots/spi/home/lib/arnold/rhel7/llvm_5.0
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=${LLVM_DIRECTORY}/bin/clang -DCMAKE_CXX_COMPILER=${LLVM_DIRECTORY}/bin/clang++
+    else ifeq (${COMPILER},clang)
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
     else ifeq (${COMPILER}, gcc490)
       MY_CMAKE_FLAGS += \
          -DCMAKE_C_COMPILER=/net/soft_scratch/apps/arnold/tools/gcc-4.9-20130512-test/bin/gcc \
          -DCMAKE_CXX_COMPILER=/net/soft_scratch/apps/arnold/tools/gcc-4.9-20130512-test/bin/g++
-    else ifeq (${COMPILER},clang)
-        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
     else ifeq (${COMPILER},gcc)
         MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
     else ifeq (${COMPILER},)
@@ -162,15 +164,16 @@ ifeq ($(SP_OS), rhel7)
     MY_CMAKE_FLAGS += -DTIFF_INCLUDE_DIR:STRING=/usr/include \
                       -DTIFF_LIBRARIES:STRING=/net/soft_scratch/users/lg/tiff-4.0.3/rhel7/lib/libtiff.a
     MY_CMAKE_FLAGS += -DHIDE_SYMBOLS=1
-    MY_CMAKE_FLAGS += -DVISIBILITY_MAP_FILE:STRING="${working_dir}/site/spi/libOpenImageIO.map"
+    MY_CMAKE_FLAGS += -DVISIBILITY_MAP_FILE:STRING="${working_dir}/site/spi/hidesymbols.map"
     MY_CMAKE_FLAGS += -DEXTRA_DSO_LINK_ARGS:STRING="-Wl,--exclude-libs,libtiff.a"
+    MY_CMAKE_FLAGS += -DUSE_OPENCV=0
 
     # end rhel7
 
 ## Official OS X build machines with special conventions
 else ifeq ($(SP_OS), lion)
-    USE_CPP11 ?= 0
-    USE_SIMD = sse4.2
+    USE_CPP ?= 11
+    USE_SIMD ?= sse4.2
     MACPORTS_PREFIX=/opt/local-10.7-2012-08
     OCIO_PATH ?= "${SPCOMP2_SHOTTREE_LOCATION}/OpenColorIO/${SP_OS}-${SPCOMP2_COMPILER}/v${OCIO_SPCOMP_VERSION}"
     FIELD3D_HOME ?= "${INSTALL_SPCOMP2_LOCATION}/Field3D/${SP_OS}-${SPCOMP2_COMPILER}-boost151/v306"
@@ -180,8 +183,6 @@ else ifeq ($(SP_OS), lion)
     #   without libraries and applications linking against this
     #   library will not be able to find it at run time; prepends
     #   "@rpath/" to the internal ID
-    # OPENJPEG_HOME:
-    #   Setting THIRD_PARTY_TOOLS_HOME isn't sufficient
     # OVERRIDE_SHARED_LIBRARY_SUFFIX:
     #   Set to .so so that shared libraries end in .so to be consistent
     #   with Linux SpComp2 shared libraries
@@ -189,8 +190,6 @@ else ifeq ($(SP_OS), lion)
     # PYTHON_INCLUDE_DIR:
     # PYTHON_LIBRARY:
     #   Use MacPorts' Python
-    # THIRD_PARTY_TOOLS_HOME:
-    #   Find everything in SPI's MacPorts.
     # ZLIB_ROOT:
     #   Needed to use SPI's MacPorts' zlib.
     MY_CMAKE_FLAGS += \
@@ -201,7 +200,6 @@ else ifeq ($(SP_OS), lion)
       -DPYTHON_EXECUTABLE=${MACPORTS_PREFIX}/bin/python${PYVER} \
       -DPYTHON_INCLUDE_DIR=${MACPORTS_PREFIX}/Library/Frameworks/Python.framework/Versions/2.7/Headers \
       -DPYTHON_LIBRARIES=${MACPORTS_PREFIX}/Library/Frameworks/Python.framework/Versions/2.7/Python \
-      -DTHIRD_PARTY_TOOLS_HOME=${MACPORTS_PREFIX} \
       -DZLIB_ROOT=${MACPORTS_PREFIX}
     MY_CMAKE_FLAGS += \
       -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
@@ -219,19 +217,30 @@ else ifeq ($(SP_OS), lion)
 
 ## Generic OSX machines (including LG's laptop)
 else ifeq (${platform}, macosx)
-    USE_SIMD = sse4.2
-    MY_CMAKE_FLAGS += \
-        -DCMAKE_INSTALL_NAME_DIR="${working_dir}/dist/${platform}${variant}/lib"
-    # don't need this? -DBUILD_WITH_INSTALL_RPATH=1
+    USE_SIMD ?= sse4.2
 
     # A variety of tags can be used to try specific versions of gcc or
     # clang from the site-specific places we have installed them.
-    ifeq (${COMPILER}, gcc5)
+    ifeq (${COMPILER}, gcc48)
         MY_CMAKE_FLAGS += \
-           -DCMAKE_C_COMPILER=/usr/local/bin/gcc-5 -DCMAKE_CXX_COMPILER=/usr/local/bin/g++-5
+           -DCMAKE_C_COMPILER=gcc-4.8 -DCMAKE_CXX_COMPILER=g++-4.8
+        USE_LIBCPLUSPLUS := 0
+    else ifeq (${COMPILER}, gcc49)
+        MY_CMAKE_FLAGS += \
+           -DCMAKE_C_COMPILER=gcc-4.9 -DCMAKE_CXX_COMPILER=g++-4.9
+        USE_LIBCPLUSPLUS := 0
+    else ifeq (${COMPILER}, gcc5)
+        MY_CMAKE_FLAGS += \
+           -DCMAKE_C_COMPILER=gcc-5 -DCMAKE_CXX_COMPILER=g++-5
+        USE_LIBCPLUSPLUS := 0
     else ifeq (${COMPILER}, gcc6)
         MY_CMAKE_FLAGS += \
-           -DCMAKE_C_COMPILER=/usr/local/bin/gcc-6 -DCMAKE_CXX_COMPILER=/usr/local/bin/g++-6
+           -DCMAKE_C_COMPILER=gcc-6 -DCMAKE_CXX_COMPILER=g++-6
+        USE_LIBCPLUSPLUS := 0
+    else ifeq (${COMPILER},clang35)
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang-3.5 -DCMAKE_CXX_COMPILER=clang++-3.5
+    else ifeq (${COMPILER},clang38)
+        MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang-3.8 -DCMAKE_CXX_COMPILER=clang++-3.8
     else ifeq (${COMPILER},clang)
         MY_CMAKE_FLAGS += -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
     else ifeq (${COMPILER},gcc)
@@ -312,13 +321,6 @@ spcomp2_install_fixup_lion: spcomp2 spcomp2_debug
 	install_name_tool -add_rpath ${OIIO_SPCOMP2_PATH}/lib ${dist_dir}/python/libPyOpenImageIO.so
 	install_name_tool -add_rpath ${OCIO_PATH}/lib/debug ${dist_dir}.debug/python/libPyOpenImageIO.so
 	install_name_tool -add_rpath ${OIIO_SPCOMP2_PATH}/lib/debug ${dist_dir}.debug/python/libPyOpenImageIO.so
-
-spcomp2_install_fixup_spinux1: spcomp2 spcomp2_debug
-	echo $(INSTALL_SPCOMP2_LOCATION)
-	patchelf --set-rpath ${SPCOMP2_RPATH_OPT} ${dist_dir}/lib/libOpenImageIO.so
-	patchelf --set-rpath ${SPCOMP2_RPATH_DEBUG} ${dist_dir}.debug/lib/libOpenImageIO.so
-	patchelf --set-rpath ${PYSPCOMP2_RPATH_OPT} ${dist_dir}/python/libPyOpenImageIO.so
-	patchelf --set-rpath ${PYSPCOMP2_RPATH_DEBUG} ${dist_dir}.debug/python/libPyOpenImageIO.so
 
 spcomp2_install_fixup_rhel7: spcomp2 spcomp2_debug
 	echo $(INSTALL_SPCOMP2_LOCATION)

@@ -201,8 +201,8 @@ oiio_attribute_typed (const std::string &name, TypeDesc type, object &obj)
         py_to_stdvector (vals, obj);
         if (vals.size() == type.numelements()*type.aggregate) {
             std::vector<ustring> u;
-            for (size_t i = 0, e = vals.size(); i < e; ++i)
-                u.push_back (ustring(vals[i]));
+            for (auto& val : vals)
+                u.emplace_back(val);
             return OIIO::attribute (name, type, &u[0]);
         }
         return false;
@@ -235,8 +235,8 @@ oiio_attribute_tuple_typed (const std::string &name,
         py_to_stdvector (vals, obj);
         if (vals.size() == type.numelements()*type.aggregate) {
             std::vector<ustring> u;
-            for (size_t i = 0, e = vals.size(); i < e; ++i)
-                u.push_back (ustring(vals[i]));
+            for (auto& val : vals)
+                u.emplace_back(val);
             return OIIO::attribute (name, type, &u[0]);
         }
         return false;

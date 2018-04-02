@@ -28,10 +28,10 @@
   (This is the Modified BSD License)
 */
 
-#include <boost/scoped_array.hpp>
+#include <memory>
 
 #include "py_oiio.h"
-#include "OpenImageIO/platform.h"
+#include <OpenImageIO/platform.h>
 
 
 namespace PyOpenImageIO
@@ -84,7 +84,7 @@ ImageBuf_reset_spec (ImageBuf &buf, const ImageSpec &spec)
 
 bool
 ImageBuf_read (ImageBuf &buf, int subimage=0, int miplevel=0,
-               bool force=false, TypeDesc convert=TypeDesc::UNKNOWN)
+               bool force=false, TypeDesc convert=TypeUnknown)
 {
     ScopedGILRelease gil;
     return buf.read (subimage, miplevel, force, convert);
@@ -139,7 +139,7 @@ ImageBuf_set_write_format (ImageBuf &buf, TypeDesc::BASETYPE format)
 
 bool
 ImageBuf_copy (ImageBuf &buf, const ImageBuf &src,
-               TypeDesc format = TypeDesc::UNKNOWN)
+               TypeDesc format = TypeUnknown)
 {
     ScopedGILRelease gil;
     return buf.copy (src, format);
@@ -303,10 +303,10 @@ ImageBuf_get_pixels (const ImageBuf &buf, TypeDesc format, ROI roi=ROI::All())
     // If the read fails, return None.
     if (! roi.defined())
         roi = buf.roi();
-    roi.chend = std::min (roi.chend, buf.nchannels()+1);
+    roi.chend = std::min (roi.chend, buf.nchannels());
 
     size_t size = (size_t) roi.npixels() * roi.nchannels() * format.size();
-    boost::scoped_array<char> data (new char [size]);
+    std::unique_ptr<char[]> data (new char [size]);
     if (! buf.get_pixels (roi, format, &data[0])) {
         return object(handle<>(Py_None));
     }
@@ -350,7 +350,7 @@ ImageBuf_set_pixels_tuple (ImageBuf &buf, ROI roi, const tuple& data)
 {
     if (! roi.defined())
         roi = buf.roi();
-    roi.chend = std::min (roi.chend, buf.nchannels()+1);
+    roi.chend = std::min (roi.chend, buf.nchannels());
     size_t size = (size_t) roi.npixels() * roi.nchannels();
     if (size == 0)
         return true;   // done
@@ -358,7 +358,7 @@ ImageBuf_set_pixels_tuple (ImageBuf &buf, ROI roi, const tuple& data)
     py_to_stdvector (vals, data);
     if (size > vals.size())
         return false;   // Not enough data to fill our ROI
-    buf.set_pixels (roi, TypeDesc::TypeFloat, &vals[0]);
+    buf.set_pixels (roi, TypeFloat, &vals[0]);
     return true;
 }
 
@@ -373,7 +373,7 @@ ImageBuf_set_pixels_array (ImageBuf &buf, ROI roi, const object& data)
 
     if (! roi.defined())
         roi = buf.roi();
-    roi.chend = std::min (roi.chend, buf.nchannels()+1);
+    roi.chend = std::min (roi.chend, buf.nchannels());
     size_t size = (size_t) roi.npixels() * roi.nchannels();
     if (size == 0)
         return true;   // done
@@ -384,9 +384,9 @@ ImageBuf_set_pixels_array (ImageBuf &buf, ROI roi, const object& data)
     if (!addr || size > numelements)
         return false;   // Not enough data to fill our ROI
     std::vector<float> vals (numelements);
-    convert_types (elementtype, addr, TypeDesc::TypeFloat, vals.data(),
+    convert_types (elementtype, addr, TypeFloat, vals.data(),
                    int(numelements));
-    buf.set_pixels (roi, TypeDesc::TypeFloat, &vals[0]);
+    buf.set_pixels (roi, TypeFloat, &vals[0]);
     return true;
 }
 

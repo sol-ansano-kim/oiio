@@ -34,23 +34,22 @@
 
 
 #include <iostream>
+#include <memory>
 
 #include <OpenEXR/ImathFun.h>
 #include <OpenEXR/half.h>
-#include <boost/scoped_ptr.hpp>
-#include <boost/scoped_array.hpp>
 
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/deepdata.h"
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagebufalgo.h"
-#include "OpenImageIO/imagebufalgo_util.h"
-#include "OpenImageIO/imagecache.h"
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/simd.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/deepdata.h>
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
+#include <OpenImageIO/imagebufalgo_util.h>
+#include <OpenImageIO/imagecache.h>
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/thread.h>
+#include <OpenImageIO/simd.h>
 
 OIIO_NAMESPACE_BEGIN
 
@@ -149,21 +148,26 @@ public:
     void clear ();
     void reset (string_view name, int subimage, int miplevel,
                 ImageCache *imagecache, const ImageSpec *config);
-    void reset (string_view name, const ImageSpec &spec);
-    void alloc (const ImageSpec &spec);
+    // Reset the buf to blank, given the spec. If nativespec is also
+    // supplied, use it for the "native" spec, otherwise make the nativespec
+    // just copy the regular spec.
+    void reset (string_view name, const ImageSpec &spec,
+                const ImageSpec *nativespec=nullptr);
+    void alloc (const ImageSpec &spec, const ImageSpec *nativespec=nullptr);
     void realloc ();
     bool init_spec (string_view filename, int subimage, int miplevel);
-    bool read (int subimage=0, int miplevel=0, bool force=false,
-               TypeDesc convert=TypeDesc::UNKNOWN,
+    bool read (int subimage, int miplevel, int chbegin=0, int chend=-1,
+               bool force=false, TypeDesc convert=TypeDesc::UNKNOWN,
                ProgressCallback progress_callback=NULL,
                void *progress_callback_data=NULL);
     void copy_metadata (const ImageBufImpl &src);
 
     // Error reporting for ImageBuf: call this with printf-like
     // arguments.  Note however that this is fully typesafe!
-    // void error (const char *format, ...)
-    TINYFORMAT_WRAP_FORMAT (void, error, const,
-        std::ostringstream msg;, msg, append_error(msg.str());)
+    template<typename... Args>
+    void error (string_view fmt, const Args&... args) const {
+        append_error(Strutil::format (fmt, args...));
+    }
 
     void append_error (const std::string& message) const;
 
@@ -278,7 +282,7 @@ private:
     mutable int m_threads;       ///< thread policy for this image
     ImageSpec m_spec;            ///< Describes the image (size, etc)
     ImageSpec m_nativespec;      ///< Describes the true native image
-    boost::scoped_array<char> m_pixels; ///< Pixel data, if local and we own it
+    std::unique_ptr<char[]> m_pixels; ///< Pixel data, if local and we own it
     char *m_localpixels;         ///< Pointer to local pixels
     mutable spin_mutex m_valid_mutex;
     mutable bool m_spec_valid;   ///< Is the spec valid
@@ -297,7 +301,7 @@ private:
     int m_write_tile_width;
     int m_write_tile_height;
     int m_write_tile_depth;
-    boost::scoped_ptr<ImageSpec> m_configspec; // Configuration spec
+    std::unique_ptr<ImageSpec> m_configspec; // Configuration spec
     mutable std::string m_err;   ///< Last error message
 
     const ImageBufImpl operator= (const ImageBufImpl &src); // unimplemented
@@ -616,13 +620,16 @@ ImageBuf::reset (string_view filename, ImageCache *imagecache)
 
 
 void
-ImageBufImpl::reset (string_view filename, const ImageSpec &spec)
+ImageBufImpl::reset (string_view filename, const ImageSpec &spec,
+                     const ImageSpec* nativespec)
 {
     clear ();
     m_name = ustring (filename);
     m_current_subimage = 0;
     m_current_miplevel = 0;
     alloc (spec);
+    if (nativespec)
+        m_nativespec = *nativespec;
 }
 
 
@@ -671,7 +678,7 @@ ImageBufImpl::realloc ()
 
 
 void
-ImageBufImpl::alloc (const ImageSpec &spec)
+ImageBufImpl::alloc (const ImageSpec &spec, const ImageSpec *nativespec)
 {
     m_spec = spec;
 
@@ -681,7 +688,7 @@ ImageBufImpl::alloc (const ImageSpec &spec)
     m_spec.depth = std::max (1, m_spec.depth);
     m_spec.nchannels = std::max (1, m_spec.nchannels);
 
-    m_nativespec = spec;
+    m_nativespec = nativespec ? *nativespec : spec;
     realloc ();
     m_spec_valid = true;
 }
@@ -710,12 +717,12 @@ ImageBufImpl::init_spec (string_view filename, int subimage, int miplevel)
     if (m_configspec)  // Pass configuration options to cache
         m_imagecache->add_file (m_name, NULL, m_configspec.get());
     m_imagecache->get_image_info (m_name, subimage, miplevel, s_subimages,
-                                  TypeDesc::TypeInt, &m_nsubimages);
+                                  TypeInt, &m_nsubimages);
     m_imagecache->get_image_info (m_name, subimage, miplevel, s_miplevels,
-                                  TypeDesc::TypeInt, &m_nmiplevels);
+                                  TypeInt, &m_nmiplevels);
     const char *fmt = NULL;
     m_imagecache->get_image_info (m_name, subimage, miplevel,
-                                  s_fileformat, TypeDesc::TypeString, &fmt);
+                                  s_fileformat, TypeString, &fmt);
     m_fileformat = ustring(fmt);
     m_imagecache->get_imagespec (m_name, m_spec, subimage, miplevel);
     m_imagecache->get_imagespec (m_name, m_nativespec, subimage, miplevel, true);
@@ -734,7 +741,7 @@ ImageBufImpl::init_spec (string_view filename, int subimage, int miplevel)
     int peltype = TypeDesc::UNKNOWN;
     m_imagecache->get_image_info (m_name, subimage, miplevel,
                                   ustring("cachedpixeltype"),
-                                  TypeDesc::TypeInt, &peltype);
+                                  TypeInt, &peltype);
     if (peltype != TypeDesc::UNKNOWN) {
         m_spec.format = (TypeDesc::BASETYPE)peltype;
         m_spec.channelformats.clear();
@@ -769,7 +776,8 @@ ImageBuf::init_spec (string_view filename, int subimage, int miplevel)
 
 
 bool
-ImageBufImpl::read (int subimage, int miplevel, bool force, TypeDesc convert,
+ImageBufImpl::read (int subimage, int miplevel, int chbegin, int chend,
+                    bool force, TypeDesc convert,
                     ProgressCallback progress_callback,
                     void *progress_callback_data)
 {
@@ -788,9 +796,12 @@ ImageBufImpl::read (int subimage, int miplevel, bool force, TypeDesc convert,
 
     m_current_subimage = subimage;
     m_current_miplevel = miplevel;
+    if (chend < 0 || chend > nativespec().nchannels)
+        chend = nativespec().nchannels;
+    bool use_channel_subset = (chbegin != 0 || chend != nativespec().nchannels);
 
     if (m_spec.deep) {
-        boost::scoped_ptr<ImageInput> input (
+        std::unique_ptr<ImageInput> input (
                     ImageInput::open (m_name.string(), m_configspec.get()));
         if (! input) {
             error ("%s", OIIO::geterror());
@@ -812,15 +823,17 @@ ImageBufImpl::read (int subimage, int miplevel, bool force, TypeDesc convert,
         return true;
     }
 
+    m_pixelaspect = m_spec.get_float_attribute ("pixelaspectratio", 1.0f);
+
     // If we don't already have "local" pixels, and we aren't asking to
     // convert the pixels to a specific (and different) type, then take an
     // early out by relying on the cache.
     int peltype = TypeDesc::UNKNOWN;
     m_imagecache->get_image_info (m_name, subimage, miplevel,
                                   ustring("cachedpixeltype"),
-                                  TypeDesc::TypeInt, &peltype);
+                                  TypeInt, &peltype);
     m_cachedpixeltype = TypeDesc ((TypeDesc::BASETYPE)peltype);
-    if (! m_localpixels && ! force &&
+    if (! m_localpixels && ! force && ! use_channel_subset &&
         (convert == m_cachedpixeltype || convert == TypeDesc::UNKNOWN)) {
         m_spec.format = m_cachedpixeltype;
         m_pixel_bytes = m_spec.pixel_bytes();
@@ -836,11 +849,24 @@ ImageBufImpl::read (int subimage, int miplevel, bool force, TypeDesc convert,
         return true;
     }
 
+    if (use_channel_subset) {
+        // Some adjustments because we are reading a channel subset
+        force = true;
+        m_spec.nchannels = chend-chbegin;
+        m_spec.channelnames.resize (m_spec.nchannels);
+        for (int c = 0; c < m_spec.nchannels; ++c)
+            m_spec.channelnames[c] = m_nativespec.channelnames[c+chbegin];
+        if (m_nativespec.channelformats.size()) {
+            m_spec.channelformats.resize (m_spec.nchannels);
+            for (int c = 0; c < m_spec.nchannels; ++c)
+                m_spec.channelformats[c] = m_nativespec.channelformats[c+chbegin];
+        }
+    }
+
     if (convert != TypeDesc::UNKNOWN)
         m_spec.format = convert;
     else
         m_spec.format = m_nativespec.format;
-    m_pixelaspect = m_spec.get_float_attribute ("pixelaspectratio", 1.0f);
     realloc ();
 
     // If forcing a full read, make sure the spec reflects the nativespec's
@@ -875,7 +901,7 @@ ImageBufImpl::read (int subimage, int miplevel, bool force, TypeDesc convert,
                 ok &= in->seek_subimage (subimage, miplevel, newspec);
             }
             if (ok)
-                ok &= in->read_image (convert, m_localpixels);
+                ok &= in->read_image (chbegin, chend, convert, m_localpixels);
             in->close ();
             if (ok) {
                 m_pixels_valid = true;
@@ -897,6 +923,7 @@ ImageBufImpl::read (int subimage, int miplevel, bool force, TypeDesc convert,
                                   m_spec.x, m_spec.x+m_spec.width,
                                   m_spec.y, m_spec.y+m_spec.height,
                                   m_spec.z, m_spec.z+m_spec.depth,
+                                  chbegin, chend,
                                   m_spec.format, m_localpixels)) {
         m_pixels_valid = true;
     } else {
@@ -914,7 +941,19 @@ ImageBuf::read (int subimage, int miplevel, bool force, TypeDesc convert,
                 ProgressCallback progress_callback,
                 void *progress_callback_data)
 {
-    return impl()->read (subimage, miplevel, force, convert,
+    return impl()->read (subimage, miplevel, 0, -1, force, convert,
+                         progress_callback, progress_callback_data);
+}
+
+
+
+bool
+ImageBuf::read (int subimage, int miplevel, int chbegin, int chend,
+                bool force, TypeDesc convert,
+                ProgressCallback progress_callback,
+                void *progress_callback_data)
+{
+    return impl()->read (subimage, miplevel, chbegin, chend, force, convert,
                          progress_callback, progress_callback_data);
 }
 
@@ -965,7 +1004,7 @@ ImageBuf::write (ImageOutput *out,
         imagesize_t imagesize = bufspec.image_bytes();
         if (imagesize <= budget) {
             // whole image can fit within our budget
-            boost::scoped_array<char> tmp (new char [imagesize]);
+            std::unique_ptr<char[]> tmp (new char [imagesize]);
             ok &= get_pixels (roi(), bufformat, &tmp[0]);
             ok &= out->write_image (bufformat, &tmp[0], as, as, as,
                                     progress_callback, progress_callback_data);
@@ -973,7 +1012,7 @@ ImageBuf::write (ImageOutput *out,
             // Big tiled image: break up into tile strips
             size_t pixelsize = bufspec.pixel_bytes();
             size_t chunksize = pixelsize * outspec.width * outspec.tile_height * outspec.tile_depth;
-            boost::scoped_array<char> tmp (new char [chunksize]);
+            std::unique_ptr<char[]> tmp (new char [chunksize]);
             for (int z = 0;  z < outspec.depth;  z += outspec.tile_depth) {
                 int zend = std::min (z+outspec.z+outspec.tile_depth,
                                      outspec.z+outspec.depth);
@@ -997,7 +1036,7 @@ ImageBuf::write (ImageOutput *out,
             // Big scanline image: break up into scanline strips
             imagesize_t slsize = bufspec.scanline_bytes();
             int chunk = clamp (round_to_multiple(int(budget/slsize), 64), 1, 1024);
-            boost::scoped_array<char> tmp (new char [chunk*slsize]);
+            std::unique_ptr<char[]> tmp (new char [chunk*slsize]);
             for (int z = 0;  z < outspec.depth;  ++z) {
                 for (int y = 0;  y < outspec.height && ok;  y += chunk) {
                     int yend = std::min (y+outspec.y+chunk, outspec.y+outspec.height);
@@ -1034,7 +1073,7 @@ ImageBuf::write (string_view _filename, string_view _fileformat,
         return false;
     }
     impl()->validate_pixels ();
-    boost::scoped_ptr<ImageOutput> out (ImageOutput::create (fileformat.c_str(), "" /* searchpath */));
+    std::unique_ptr<ImageOutput> out (ImageOutput::create (fileformat.c_str(), "" /* searchpath */));
     if (! out) {
         error ("%s", geterror());
         return false;
@@ -1080,7 +1119,7 @@ bool
 ImageBuf::make_writeable (bool keep_cache_type)
 {
     if (storage() == IMAGECACHE) {
-        return read (subimage(), miplevel(), true /*force*/,
+        return read (subimage(), miplevel(), 0, -1, true /*force*/,
                      keep_cache_type ? impl()->m_cachedpixeltype : TypeDesc());
     }
     return true;
@@ -1324,50 +1363,42 @@ template<class D, class S>
 static bool
 copy_pixels_impl (ImageBuf &dst, const ImageBuf &src, ROI roi, int nthreads=0)
 {
-    if (nthreads != 1 && roi.npixels() >= 16384) {
-        // Lots of pixels and request for multi threads? Parallelize.
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(copy_pixels_impl<D,S>, OIIO::ref(dst), OIIO::cref(src),
-                       _1 /*roi*/, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
-    // Serial case:
-
-    int nchannels = roi.nchannels();
-    if (is_same<D,S>::value) {
-        // If both bufs are the same type, just directly copy the values
-        if (src.localpixels() && roi.chbegin == 0 &&
-            roi.chend == dst.nchannels() && roi.chend == src.nchannels()) {
-            // Extra shortcut -- totally local pixels for src, copying all
-            // channels, so we can copy memory around line by line, rather
-            // than value by value.
-            int nxvalues = roi.width() * dst.nchannels();
-            for (int z = roi.zbegin; z < roi.zend; ++z)
-                for (int y = roi.ybegin; y < roi.yend; ++y) {
-                    D *draw = (D *) dst.pixeladdr (roi.xbegin, y, z);
-                    const S *sraw = (const S *) src.pixeladdr (roi.xbegin, y, z);
-                    DASSERT (draw && sraw);
-                    for (int x = 0; x < nxvalues; ++x)
-                        draw[x] = sraw[x];
+    ImageBufAlgo::parallel_image (roi, nthreads, [&](ROI roi){
+        int nchannels = roi.nchannels();
+        if (is_same<D,S>::value) {
+            // If both bufs are the same type, just directly copy the values
+            if (src.localpixels() && roi.chbegin == 0 &&
+                roi.chend == dst.nchannels() && roi.chend == src.nchannels()) {
+                // Extra shortcut -- totally local pixels for src, copying all
+                // channels, so we can copy memory around line by line, rather
+                // than value by value.
+                int nxvalues = roi.width() * dst.nchannels();
+                for (int z = roi.zbegin; z < roi.zend; ++z)
+                    for (int y = roi.ybegin; y < roi.yend; ++y) {
+                        D *draw = (D *) dst.pixeladdr (roi.xbegin, y, z);
+                        const S *sraw = (const S *) src.pixeladdr (roi.xbegin, y, z);
+                        DASSERT (draw && sraw);
+                        for (int x = 0; x < nxvalues; ++x)
+                            draw[x] = sraw[x];
+                    }
+            } else {
+                ImageBuf::Iterator<D,D> d (dst, roi);
+                ImageBuf::ConstIterator<D,D> s (src, roi);
+                for ( ; ! d.done();  ++d, ++s) {
+                    for (int c = 0;  c < nchannels;  ++c)
+                        d[c] = s[c];
                 }
+            }
         } else {
-            ImageBuf::Iterator<D,D> d (dst, roi);
-            ImageBuf::ConstIterator<D,D> s (src, roi);
+            // If the two bufs are different types, convert through float
+            ImageBuf::Iterator<D> d (dst, roi);
+            ImageBuf::ConstIterator<S> s (src, roi);
             for ( ; ! d.done();  ++d, ++s) {
                 for (int c = 0;  c < nchannels;  ++c)
                     d[c] = s[c];
             }
         }
-    } else {
-        // If the two bufs are different types, convert through float
-        ImageBuf::Iterator<D> d (dst, roi);
-        ImageBuf::ConstIterator<S> s (src, roi);
-        for ( ; ! d.done();  ++d, ++s) {
-            for (int c = 0;  c < nchannels;  ++c)
-                d[c] = s[c];
-        }
-    }
+    });
     return true;
 }
 
@@ -1411,12 +1442,12 @@ ImageBuf::copy (const ImageBuf &src, TypeDesc format)
         return true;
     }
     if (src.deep()) {
-        reset (src.name(), src.spec());
+        impl()->reset (src.name(), src.spec(), &src.nativespec());
         impl()->m_deepdata = src.impl()->m_deepdata;
         return true;
     }
     if (format.basetype == TypeDesc::UNKNOWN || src.deep())
-        reset (src.name(), src.spec());
+        impl()->reset (src.name(), src.spec(), &src.nativespec());
     else {
         ImageSpec newspec (src.spec());
         newspec.set_format (format);
@@ -1674,26 +1705,18 @@ get_pixels_ (const ImageBuf &buf, ROI whole_roi, ROI roi, void *r_,
              stride_t xstride, stride_t ystride, stride_t zstride,
              int nthreads=0)
 {
-    if (nthreads != 1 && roi.npixels() >= 64*1024) {
-        // Possible multiple thread case -- recurse via parallel_image
-        ImageBufAlgo::parallel_image (
-            OIIO::bind(get_pixels_<D,S>, OIIO::ref(buf),
-                        whole_roi,  _1 /*roi*/, r_,
-                        xstride, ystride, zstride, 1 /*nthreads*/),
-            roi, nthreads);
-        return true;
-    }
-
-    D *r = (D *)r_;
-    int nchans = roi.nchannels();
-    for (ImageBuf::ConstIterator<S,D> p (buf, roi); !p.done(); ++p) {
-        imagesize_t offset = (p.z()-whole_roi.zbegin)*zstride
-                           + (p.y()-whole_roi.ybegin)*ystride
-                           + (p.x()-whole_roi.xbegin)*xstride;
-        D *rc = (D *)((char *)r + offset);
-        for (int c = 0;  c < nchans;  ++c)
-            rc[c] = p[c+roi.chbegin];
-    }
+    ImageBufAlgo::parallel_image (roi, nthreads, [=,&buf](ROI roi){
+        D *r = (D *)r_;
+        int nchans = roi.nchannels();
+        for (ImageBuf::ConstIterator<S,D> p (buf, roi); !p.done(); ++p) {
+            imagesize_t offset = (p.z()-whole_roi.zbegin)*zstride
+                               + (p.y()-whole_roi.ybegin)*ystride
+                               + (p.x()-whole_roi.xbegin)*xstride;
+            D *rc = (D *)((char *)r + offset);
+            for (int c = 0;  c < nchans;  ++c)
+                rc[c] = p[c+roi.chbegin];
+        }
+    });
     return true;
 }
 
@@ -2270,6 +2293,20 @@ bool
 ImageBuf::do_wrap (int &x, int &y, int &z, WrapMode wrap) const
 {
     return m_impl->do_wrap (x, y, z, wrap);
+}
+
+
+
+ImageBuf::WrapMode
+ImageBuf::WrapMode_from_string (string_view name)
+{
+    static const char* names[] = {
+        "default", "black", "clamp", "periodic", "mirror", NULL
+    };
+    for (int i = 0; names[i]; ++i)
+        if (name == names[i])
+            return WrapMode(i);
+    return WrapDefault;  // name not found
 }
 
 

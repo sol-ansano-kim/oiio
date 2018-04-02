@@ -30,15 +30,15 @@
 
 #include <Ptexture.h>
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/typedesc.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/typedesc.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/fmath.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
 
-class PtexInput : public ImageInput {
+class PtexInput final : public ImageInput {
 public:
     PtexInput () : m_ptex(NULL) { init(); }
     virtual ~PtexInput () { close(); }

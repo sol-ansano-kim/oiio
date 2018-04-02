@@ -46,11 +46,12 @@
 #include <OpenImageIO/strutil.h>
 #include <OpenImageIO/sysutil.h>
 #include <OpenImageIO/timer.h>
+#include <OpenImageIO/benchmark.h>
 #include <OpenImageIO/argparse.h>
 #include <OpenImageIO/simd.h>
 #include <OpenImageIO/unittest.h>
 
-OIIO_NAMESPACE_USING;
+using namespace OIIO;
 
 static int iterations = 100;
 static int numthreads = Sysutil::hardware_concurrency();
@@ -116,7 +117,7 @@ test_arrays_like_image_multithread (ROI roi)
 static void
 test_arrays_like_image_multithread_wrapper (ROI roi)
 {
-    ImageBufAlgo::parallel_image (test_arrays_like_image_multithread, roi, numthreads);
+    ImageBufAlgo::parallel_image (roi, numthreads, test_arrays_like_image_multithread);
 }
 
 
@@ -129,8 +130,8 @@ test_arrays_simd4 (ROI roi)
     float *r = (float *)imgR.localpixels(); ASSERT(r);
     int x, end4 = size - (size&3);
     for (x = 0; x < end4; x += 4, a += 4, b += 4, r += 4) {
-        simd::float4 a_simd(a), b_simd(b);
-        *(simd::float4 *)r = a_simd * a_simd + b_simd;
+        simd::vfloat4 a_simd(a), b_simd(b);
+        *(simd::vfloat4 *)r = a_simd * a_simd + b_simd;
     }
     for ( ; x < size; ++x, ++a, ++b, ++r) {
         *r = a[0]*a[0] + b[0];
@@ -149,7 +150,7 @@ test_arrays_like_image_simd (ROI roi)
     for (int y = 0; y < yres; ++y) {
         for (int x = 0; x < xres; ++x) {
             int i = (y*xres + x) * nchannels;
-            simd::float4 a_simd, b_simd, r_simd;
+            simd::vfloat4 a_simd, b_simd, r_simd;
             a_simd.load (a+i, 3);
             b_simd.load (b+i, 3);
             r_simd = a_simd * a_simd + b_simd;
@@ -169,7 +170,7 @@ test_arrays_like_image_simd_multithread (ROI roi)
     for (int y = roi.ybegin; y < roi.yend; ++y) {
         for (int x = roi.xbegin; x < roi.xend; ++x) {
             int i = (y*xres + x) * nchannels;
-            simd::float4 a_simd, b_simd, r_simd;
+            simd::vfloat4 a_simd, b_simd, r_simd;
             a_simd.load (a+i, 3);
             b_simd.load (b+i, 3);
             r_simd = a_simd * a_simd + b_simd;
@@ -182,7 +183,7 @@ test_arrays_like_image_simd_multithread (ROI roi)
 static void
 test_arrays_like_image_simd_multithread_wrapper (ROI roi)
 {
-    ImageBufAlgo::parallel_image (test_arrays_like_image_simd_multithread, roi, 0);
+    ImageBufAlgo::parallel_image (roi, test_arrays_like_image_simd_multithread);
 }
 
 
@@ -206,7 +207,7 @@ test_compute ()
 
     std::cout << "Test straightforward as 1D array of float: ";
     ImageBufAlgo::zero (imgR);
-    time = time_trial (OIIO::bind (test_arrays, roi), ntrials, iterations) / iterations;
+    time = time_trial (std::bind (test_arrays, roi), ntrials, iterations) / iterations;
     std::cout << Strutil::format ("%.1f Mvals/sec", (size/1.0e6)/time) << std::endl;
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,0), 0.25, 0.001);
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,1), 0.25, 0.001);
@@ -215,7 +216,7 @@ test_compute ()
 
     std::cout << "Test array iterated like an image: ";
     ImageBufAlgo::zero (imgR);
-    time = time_trial (OIIO::bind (test_arrays_like_image, roi), ntrials, iterations) / iterations;
+    time = time_trial (std::bind (test_arrays_like_image, roi), ntrials, iterations) / iterations;
     std::cout << Strutil::format ("%.1f Mvals/sec", (size/1.0e6)/time) << std::endl;
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,0), 0.25, 0.001);
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,1), 0.25, 0.001);
@@ -223,7 +224,7 @@ test_compute ()
 
     std::cout << "Test array iterated like an image, multithreaded: ";
     ImageBufAlgo::zero (imgR);
-    time = time_trial (OIIO::bind (test_arrays_like_image_multithread_wrapper, roi), ntrials, iterations) / iterations;
+    time = time_trial (std::bind (test_arrays_like_image_multithread_wrapper, roi), ntrials, iterations) / iterations;
     std::cout << Strutil::format ("%.1f Mvals/sec", (size/1.0e6)/time) << std::endl;
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,0), 0.25, 0.001);
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,1), 0.25, 0.001);
@@ -231,7 +232,7 @@ test_compute ()
 
     std::cout << "Test array as 1D, using SIMD: ";
     ImageBufAlgo::zero (imgR);
-    time = time_trial (OIIO::bind (test_arrays_simd4, roi), ntrials, iterations) / iterations;
+    time = time_trial (std::bind (test_arrays_simd4, roi), ntrials, iterations) / iterations;
     std::cout << Strutil::format ("%.1f Mvals/sec", (size/1.0e6)/time) << std::endl;
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,0), 0.25, 0.001);
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,1), 0.25, 0.001);
@@ -239,7 +240,7 @@ test_compute ()
 
     std::cout << "Test array iterated like an image, using SIMD: ";
     ImageBufAlgo::zero (imgR);
-    time = time_trial (OIIO::bind (test_arrays_like_image_simd, roi), ntrials, iterations) / iterations;
+    time = time_trial (std::bind (test_arrays_like_image_simd, roi), ntrials, iterations) / iterations;
     std::cout << Strutil::format ("%.1f Mvals/sec", (size/1.0e6)/time) << std::endl;
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,0), 0.25, 0.001);
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,1), 0.25, 0.001);
@@ -247,7 +248,7 @@ test_compute ()
 
     std::cout << "Test array iterated like an image, using SIMD, multithreaded: ";
     ImageBufAlgo::zero (imgR);
-    time = time_trial (OIIO::bind (test_arrays_like_image_simd_multithread_wrapper, roi), ntrials, iterations) / iterations;
+    time = time_trial (std::bind (test_arrays_like_image_simd_multithread_wrapper, roi), ntrials, iterations) / iterations;
     std::cout << Strutil::format ("%.1f Mvals/sec", (size/1.0e6)/time) << std::endl;
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,0), 0.25, 0.001);
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,1), 0.25, 0.001);
@@ -255,7 +256,7 @@ test_compute ()
 
     std::cout << "Test ImageBufAlgo::mad 1 thread: ";
     ImageBufAlgo::zero (imgR);
-    time = time_trial (OIIO::bind (test_IBA, roi, 1),
+    time = time_trial (std::bind (test_IBA, roi, 1),
                        ntrials, iterations) / iterations;
     std::cout << Strutil::format ("%.1f Mvals/sec", (size/1.0e6)/time) << std::endl;
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,0), 0.25, 0.001);
@@ -264,7 +265,7 @@ test_compute ()
 
     std::cout << "Test ImageBufAlgo::mad multi-thread " << numthreads << ": ";
     ImageBufAlgo::zero (imgR);
-    time = time_trial (OIIO::bind (test_IBA, roi, numthreads),
+    time = time_trial (std::bind (test_IBA, roi, numthreads),
                        ntrials, iterations) / iterations;
     std::cout << Strutil::format ("%.1f Mvals/sec", (size/1.0e6)/time) << std::endl;
     OIIO_CHECK_EQUAL_THRESH (imgR.getchannel(xres/2,yres/2,0,0), 0.25, 0.001);
@@ -308,7 +309,7 @@ getargs (int argc, char *argv[])
 
 int main (int argc, char *argv[])
 {
-#if !defined(NDEBUG) || defined(OIIO_CI) || defined(OIIO_CODECOV)
+#if !defined(NDEBUG) || defined(OIIO_CI) || defined(OIIO_CODE_COVERAGE)
     // For the sake of test time, reduce the default iterations for DEBUG,
     // CI, and code coverage builds. Explicit use of --iters or --trials
     // will override this, since it comes before the getargs() call.

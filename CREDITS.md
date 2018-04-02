@@ -47,6 +47,7 @@ Other contributors (alphabetically):
 * Nicolas Burtnyk
 * Kevin Brightwell
 * Fabien Castan
+* Lucille Caillaud
 * Clément Champetier
 * Duncan Chan
 * Guillaume Chatelet
@@ -68,10 +69,12 @@ Other contributors (alphabetically):
 * Manuel Gamito
 * Ananth Garre
 * Alexandre Gauthier
+* Joesph Goldstone
 * Deepak Gopinath
 * John Haddon
 * Brian Hall
 * Jep Hill
+* Patrick Hodoul
 * Changlin Hsieh
 * Justin Israel
 * Thiago Ize
@@ -83,6 +86,7 @@ Other contributors (alphabetically):
 * Alexander Kuleshov
 * Nixon Kwok
 * Pete Larabell
+* LazyDodo
 * Michel Lerenard
 * Manuel Leonhardt
 * Matthew E. Levine
@@ -92,6 +96,7 @@ Other contributors (alphabetically):
 * Hugh Macdonald
 * Lukasz Maliszewski
 * Justina Mikonyte
+* Ray Molenkamp
 * Paul Molodowitch
 * Bastien Montagne
 * Ramon Montoya
@@ -112,8 +117,10 @@ Other contributors (alphabetically):
 * Will Rosecrans
 * Ryen
 * Lukas Schrangl
+* Jonathan Scruggs
 * Alex Schworer
 * Aman Shah
+* Arkady Shapkin
 * Sergey Sharybin
 * Richard Shaw
 * Tim D. Smith
@@ -121,8 +128,10 @@ Other contributors (alphabetically):
 * Stefan Stavrev
 * Cliff Stein
 * Mariusz Szczepanczyk
+* Kazuki Takahashi
 * Blair Tennessy
 * Ott Tinn
+* Pino Toscano
 * Edgar Velazquez-Armendariz
 * Ghislain Antony Vaillant
 * Matteo F. Vescovi
@@ -132,8 +141,10 @@ Other contributors (alphabetically):
 * Xo Wang
 * Christoph Willing
 * Scott Wilson
+* Akihiro Yamasaki
 * Yang Yang
 * Nicholas Yue
+* Roman Zulak
 
 
 If you know of somebody that I missed, please let me know: 

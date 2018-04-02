@@ -28,9 +28,6 @@
 [submodule "LibRaw"]
 	path = LibRaw
 	url = git://github.com/gatgui/LibRaw.git
-[submodule "jbigkit"]
-	path = jbigkit
-	url = git://github.com/gatgui/jbigkit.git
 [submodule "Little-cms"]
 	path = Little-cms
 	url = git://github.com/gatgui/Little-cms.git

@@ -30,14 +30,13 @@
 
 #include <string>
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/typedesc.h"
-#include "OpenImageIO/varyingref.h"
-#include "OpenImageIO/ustring.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/fmath.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/texture.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/typedesc.h>
+#include <OpenImageIO/varyingref.h>
+#include <OpenImageIO/ustring.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/texture.h>
 
 
 OIIO_NAMESPACE_BEGIN
@@ -131,32 +130,32 @@ TextureOpt::TextureOpt (const TextureOptions &opt, int index)
 
 
 
-TextureOpt::Wrap
-TextureOpt::decode_wrapmode (const char *name)
+Tex::Wrap
+Tex::decode_wrapmode (const char *name)
 {
-    for (int i = 0;  i < (int)WrapLast;  ++i)
+    for (int i = 0;  i < (int)Tex::Wrap::Last;  ++i)
         if (! strcmp (name, wrap_type_name[i].c_str()))
             return (Wrap) i;
-    return TextureOpt::WrapDefault;
+    return Tex::Wrap::Default;
 }
 
 
 
-TextureOpt::Wrap
-TextureOpt::decode_wrapmode (ustring name)
+Tex::Wrap
+Tex::decode_wrapmode (ustring name)
 {
-    for (int i = 0;  i < (int)WrapLast;  ++i)
+    for (int i = 0;  i < (int)Tex::Wrap::Last;  ++i)
         if (name == wrap_type_name[i])
             return (Wrap) i;
-    return TextureOpt::WrapDefault;
+    return Tex::Wrap::Default;
 }
 
 
 
 void
-TextureOpt::parse_wrapmodes (const char *wrapmodes,
-                             TextureOpt::Wrap &swrapcode,
-                             TextureOpt::Wrap &twrapcode)
+Tex::parse_wrapmodes (const char *wrapmodes,
+                      Tex::Wrap &swrapcode,
+                      Tex::Wrap &twrapcode)
 {
     char *swrap = (char *) alloca (strlen(wrapmodes)+1);
     const char *twrap;
@@ -170,5 +169,6 @@ TextureOpt::parse_wrapmodes (const char *wrapmodes,
     swrapcode = decode_wrapmode (swrap);
     twrapcode = decode_wrapmode (twrap);
 }
+
 
 OIIO_NAMESPACE_END

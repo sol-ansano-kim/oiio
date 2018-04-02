@@ -35,10 +35,10 @@
 
 #include <OpenEXR/half.h>
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/ustring.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/typedesc.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/ustring.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/typedesc.h>
 
 
 OIIO_NAMESPACE_BEGIN
@@ -54,7 +54,7 @@ TypeDesc::TypeDesc (string_view typestring)
 
 namespace {
 
-static int basetype_size[] = {
+static int basetype_size[TypeDesc::LASTBASE] = {
     0, // UNKNOWN
     0, // VOID
     sizeof(unsigned char),   // UCHAR
@@ -77,7 +77,6 @@ static int basetype_size[] = {
 size_t
 TypeDesc::basesize () const
 {
-    DASSERT (sizeof(basetype_size)/sizeof(basetype_size[0]) == TypeDesc::LASTBASE);
     DASSERT (basetype < TypeDesc::LASTBASE);
     return basetype_size[basetype];
 }
@@ -87,7 +86,7 @@ TypeDesc::basesize () const
 bool
 TypeDesc::is_floating_point () const
 {
-    static bool isfloat[] = {
+    static bool isfloat[TypeDesc::LASTBASE] = {
         0, // UNKNOWN
         0, // VOID
         0, // UCHAR
@@ -104,7 +103,6 @@ TypeDesc::is_floating_point () const
         0, // STRING
         0  // PTR
     };
-    DASSERT (sizeof(isfloat)/sizeof(isfloat[0]) == TypeDesc::LASTBASE);
     DASSERT (basetype < TypeDesc::LASTBASE);
     return isfloat[basetype];
 }
@@ -114,7 +112,7 @@ TypeDesc::is_floating_point () const
 bool
 TypeDesc::is_signed () const
 {
-    static bool issigned[] = {
+    static bool issigned[TypeDesc::LASTBASE] = {
         0, // UNKNOWN
         0, // VOID
         0, // UCHAR
@@ -131,7 +129,6 @@ TypeDesc::is_signed () const
         0, // STRING
         0  // PTR
     };
-    DASSERT (sizeof(issigned)/sizeof(issigned[0]) == TypeDesc::LASTBASE);
     DASSERT (basetype < TypeDesc::LASTBASE);
     return issigned[basetype];
 }
@@ -217,6 +214,7 @@ TypeDesc::c_str () const
         case POINT  : vec = "point"; break;
         case VECTOR : vec = "vector"; break;
         case NORMAL : vec = "normal"; break;
+        case RATIONAL  : vec = "rational"; break;
         default: ASSERT (0 && "Invalid vector semantics");
         }
         const char *agg = "";
@@ -301,6 +299,8 @@ TypeDesc::fromstring (string_view typestring)
         t = TypeMatrix44;
     else if (type == "timecode")
         t = TypeTimeCode;
+    else if (type == "rational")
+        t = TypeRational;
     else {
         return 0;  // unknown
     }
@@ -436,6 +436,7 @@ const TypeDesc TypeDesc::TypeHalf (TypeDesc::HALF);
 const TypeDesc TypeDesc::TypeTimeCode (TypeDesc::UINT, TypeDesc::SCALAR, TypeDesc::TIMECODE, 2);
 const TypeDesc TypeDesc::TypeKeyCode (TypeDesc::INT, TypeDesc::SCALAR, TypeDesc::KEYCODE, 7);
 const TypeDesc TypeDesc::TypeFloat4 (TypeDesc::FLOAT, TypeDesc::VEC4);
+const TypeDesc TypeDesc::TypeRational(TypeDesc::INT, TypeDesc::VEC2, TypeDesc::RATIONAL);
 
 
 OIIO_NAMESPACE_END

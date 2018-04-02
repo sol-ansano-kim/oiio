@@ -28,15 +28,12 @@
   (This is the Modified BSD License)
 */
 
-#include <setjmp.h>
+#include <csetjmp>
 #include <fstream>
 #include <vector>
 #include <map>
-
-#include <boost/bind.hpp>
-#include <boost/function.hpp>
-#include <boost/foreach.hpp>
-#include <boost/scoped_array.hpp>
+#include <functional>
+#include <memory>
 
 #include "psd_pvt.h"
 #include "jpeg_memory_src.h"
@@ -46,7 +43,7 @@ OIIO_PLUGIN_NAMESPACE_BEGIN
 using namespace psd_pvt;
 
 
-class PSDInput : public ImageInput {
+class PSDInput final : public ImageInput {
 public:
     PSDInput ();
     virtual ~PSDInput () { close(); }
@@ -92,7 +89,7 @@ private:
     // into ImageSpec
     struct ResourceLoader {
         uint16_t resource_id;
-        boost::function<bool (PSDInput *, uint32_t)> load;
+        std::function<bool (PSDInput *, uint32_t)> load;
     };
 
     // Map image resource ID to image resource block
@@ -413,9 +410,6 @@ private:
         m_file.read ((char *)&buffer, sizeof(buffer));
         if (!bigendian ())
             swap_endian (&buffer);
-
-        // For debugging, numeric_cast will throw if precision is lost:
-        // value = boost::numeric_cast<TVariable>(buffer);
         value = buffer;
         return m_file.good();
     }
@@ -479,7 +473,7 @@ private:
 // 1) Add ADD_LOADER(<ResourceID>) below
 // 2) Add a method in PSDInput:
 //    bool load_resource_<ResourceID> (uint32_t length);
-#define ADD_LOADER(id) {id, boost::bind (&PSDInput::load_resource_##id, _1, _2)}
+#define ADD_LOADER(id) {id, std::bind (&PSDInput::load_resource_##id, std::placeholders::_1, std::placeholders::_2)}
 const PSDInput::ResourceLoader PSDInput::resource_loaders[] =
 {
     ADD_LOADER(1005),
@@ -783,21 +777,21 @@ PSDInput::read_native_scanline (int y, int z, void *data)
     } else if (m_header.color_mode == ColorMode_CMYK) {
         switch (bps) {
         case 4: {
-            boost::scoped_array<float> cmyk (new float [4*m_spec.width]);
+            std::unique_ptr<float[]> cmyk (new float [4*m_spec.width]);
             interleave_row (cmyk.get(), 4);
             cmyk_to_rgb (m_spec.width, cmyk.get(), 4,
                          (float *)dst, m_spec.nchannels);
             break;
             }
         case 2: {
-            boost::scoped_array<unsigned short> cmyk (new unsigned short [4*m_spec.width]);
+            std::unique_ptr<unsigned short[]> cmyk (new unsigned short [4*m_spec.width]);
             interleave_row (cmyk.get(), 4);
             cmyk_to_rgb (m_spec.width, cmyk.get(), 4,
                          (unsigned short *)dst, m_spec.nchannels);
             break;
             }
         default: {
-            boost::scoped_array<unsigned char> cmyk (new unsigned char [4*m_spec.width]);
+            std::unique_ptr<unsigned char[]> cmyk (new unsigned char [4*m_spec.width]);
             interleave_row (cmyk.get(), 4);
             cmyk_to_rgb (m_spec.width, cmyk.get(), 4,
                          (unsigned char *)dst, m_spec.nchannels);
@@ -1082,7 +1076,7 @@ PSDInput::handle_resources (ImageResourceMap &resources)
 {
     // Loop through each of our resource loaders
     const ImageResourceMap::const_iterator end (resources.end ());
-    BOOST_FOREACH (const ResourceLoader &loader, resource_loaders) {
+    for (const ResourceLoader &loader : resource_loaders) {
         ImageResourceMap::const_iterator it (resources.find (loader.resource_id));
         // If a resource with that ID exists in the file, call the loader
         if (it != end) {
@@ -1514,7 +1508,7 @@ PSDInput::load_layer (Layer &layer)
 
     extra_remaining -= read_pascal_string(layer.name, 4);
     while (m_file && extra_remaining >= 12) {
-        layer.additional_info.push_back (Layer::AdditionalInfo());
+        layer.additional_info.emplace_back();
         Layer::AdditionalInfo &info = layer.additional_info.back();
 
         char signature[4];
@@ -1567,30 +1561,40 @@ PSDInput::load_layer_channel (Layer &layer, ChannelInfo &channel_info)
     if (channel_info.data_length <= 2)
         return true;
 
+    // Use mask_data size when channel_id is -2
+    uint32_t width, height;
+    if (channel_info.channel_id == ChannelID_LayerMask) {
+        width = (uint32_t)std::abs ((int)layer.mask_data.right - (int)layer.mask_data.left);
+        height = (uint32_t)std::abs ((int)layer.mask_data.bottom - (int)layer.mask_data.top);
+    } else {
+        width = layer.width;
+        height = layer.height;
+    }
+
     channel_info.data_pos = m_file.tellg ();
-    channel_info.row_pos.resize (layer.height);
-    channel_info.row_length = (layer.width * m_header.depth + 7) / 8;
+    channel_info.row_pos.resize (height);
+    channel_info.row_length = (width * m_header.depth + 7) / 8;
     switch (channel_info.compression) {
         case Compression_Raw:
-            if (layer.height) {
+            if (height) {
                 channel_info.row_pos[0] = channel_info.data_pos;
-                for (uint32_t i = 1; i < layer.height; ++i)
+                for (uint32_t i = 1; i < height; ++i)
                     channel_info.row_pos[i] = channel_info.row_pos[i - 1] + (std::streampos)channel_info.row_length;
             }
-            channel_info.data_length = channel_info.row_length * layer.height;
+            channel_info.data_length = channel_info.row_length * height;
             break;
         case Compression_RLE:
             // RLE lengths are stored before the channel data
-            if (!read_rle_lengths (layer.height, channel_info.rle_lengths))
+            if (!read_rle_lengths (height, channel_info.rle_lengths))
                 return false;
 
             // channel data is located after the RLE lengths
             channel_info.data_pos = m_file.tellg ();
             // subtract the RLE lengths read above
             channel_info.data_length = channel_info.data_length - (channel_info.data_pos - start_pos);
-            if (layer.height) {
+            if (height) {
                 channel_info.row_pos[0] = channel_info.data_pos;
-                for (uint32_t i = 1; i < layer.height; ++i)
+                for (uint32_t i = 1; i < height; ++i)
                     channel_info.row_pos[i] = channel_info.row_pos[i - 1] + (std::streampos)channel_info.rle_lengths[i - 1];
             }
             break;
@@ -1731,7 +1735,7 @@ PSDInput::load_image_data ()
     m_image_data.channel_info.resize (m_header.channel_count);
     // setup some generic properties and read any RLE lengths
     // Image Data Section has RLE lengths for all channels stored first
-    BOOST_FOREACH (ChannelInfo &channel_info, m_image_data.channel_info) {
+    for (ChannelInfo &channel_info : m_image_data.channel_info) {
         channel_info.compression = compression;
         channel_info.channel_id = id++;
         channel_info.data_length = row_length * m_header.height;
@@ -1740,7 +1744,7 @@ PSDInput::load_image_data ()
                 return false;
         }
     }
-    BOOST_FOREACH (ChannelInfo &channel_info, m_image_data.channel_info) {
+    for (ChannelInfo &channel_info : m_image_data.channel_info) {
         channel_info.row_pos.resize (m_header.height);
         channel_info.data_pos = m_file.tellg ();
         channel_info.row_length = (m_header.width * m_header.depth + 7) / 8;
@@ -1787,8 +1791,8 @@ PSDInput::setup ()
     }
 
     // Composite spec
-    m_specs.push_back (ImageSpec (m_header.width, m_header.height,
-                                  spec_channel_count, m_type_desc));
+    m_specs.emplace_back (m_header.width, m_header.height,
+                          spec_channel_count, m_type_desc);
     m_specs.back().extra_attribs = m_composite_attribs.extra_attribs;
     if (m_WantRaw)
         fill_channel_names (m_specs.back(), m_image_data.transparency);
@@ -1800,7 +1804,7 @@ PSDInput::setup ()
     for (int i = 0; i < raw_channel_count; ++i)
         m_channels[0].push_back (&m_image_data.channel_info[i]);
 
-    BOOST_FOREACH (Layer &layer, m_layers) {
+    for (Layer &layer : m_layers) {
         spec_channel_count = m_WantRaw ? mode_channel_count[m_header.color_mode] : 3;
         raw_channel_count = mode_channel_count[m_header.color_mode];
         bool transparency = (bool)layer.channel_id_map.count (ChannelID_Transparency);
@@ -1808,8 +1812,8 @@ PSDInput::setup ()
             spec_channel_count++;
             raw_channel_count++;
         }
-        m_specs.push_back (ImageSpec (layer.width, layer.height,
-                                      spec_channel_count, m_type_desc));
+        m_specs.emplace_back (layer.width, layer.height,
+                              spec_channel_count, m_type_desc);
         ImageSpec &spec = m_specs.back ();
         spec.extra_attribs = m_common_attribs.extra_attribs;
         if (m_WantRaw)
@@ -1840,9 +1844,9 @@ PSDInput::fill_channel_names (ImageSpec &spec, bool transparency)
         spec.default_channel_names ();
     } else {
         for (unsigned int i = 0; i < mode_channel_count[m_header.color_mode]; ++i)
-            spec.channelnames.push_back (mode_channel_names[m_header.color_mode][i]);
+            spec.channelnames.emplace_back(mode_channel_names[m_header.color_mode][i]);
         if (transparency)
-            spec.channelnames.push_back ("A");
+            spec.channelnames.emplace_back("A");
     }
 }
 

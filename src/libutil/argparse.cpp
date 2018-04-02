@@ -40,10 +40,10 @@
 #include <string>
 #include <sstream>
 
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/sysutil.h"
-#include "OpenImageIO/argparse.h"
-#include "OpenImageIO/dassert.h"
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/sysutil.h>
+#include <OpenImageIO/argparse.h>
+#include <OpenImageIO/dassert.h>
 
 OIIO_NAMESPACE_BEGIN
 
@@ -155,8 +155,6 @@ ArgOption::initialize()
             // Parse the scanf-like parameters
 
             m_type = Regular;
-    
-            n = (m_format.length() - n) / 2;       // conservative estimate
             m_code.clear ();
     
             while (*s != '\0') {
@@ -254,11 +252,11 @@ ArgOption::set_parameter (int i, const char *argv)
 
     case 'f':
     case 'g':
-        *(float *)m_param[i] = (float)atof(argv);
+        *(float *)m_param[i] = Strutil::stof(argv);
         break;
 
     case 'F':
-        *(double *)m_param[i] = atof(argv);
+        *(double *)m_param[i] = Strutil::stod(argv);
         break;
 
     case 's':
@@ -311,7 +309,7 @@ ArgOption::invoke_callback () const
 void
 ArgOption::add_argument (const char *argv)
 {
-    m_argv.push_back (argv);
+    m_argv.emplace_back(argv);
 }
 
 
@@ -327,8 +325,7 @@ ArgParse::ArgParse (int argc, const char **argv)
 
 ArgParse::~ArgParse()
 {
-    for (unsigned int i=0; i<m_option.size(); ++i) {
-        ArgOption *opt = m_option[i];
+    for (auto&& opt : m_option) {
         delete opt;
     }
 }
@@ -505,8 +502,7 @@ ArgParse::usage () const
     std::cout << m_intro << '\n';
     size_t maxlen = 0;
     
-    for (unsigned int i=0; i<m_option.size(); ++i) {
-        ArgOption *opt = m_option[i];
+    for (auto&& opt : m_option) {
         size_t fmtlen = opt->fmt().length();
         // Option lists > 40 chars will be split into multiple lines
         if (fmtlen < longline)
@@ -516,8 +512,7 @@ ArgParse::usage () const
     // Try to figure out how wide the terminal is, so we can word wrap.
     int columns = Sysutil::terminal_columns ();
 
-    for (unsigned int i=0; i<m_option.size(); ++i) {
-        ArgOption *opt = m_option[i];
+    for (auto&& opt : m_option) {
         if (opt->description().length()) {
             size_t fmtlen = opt->fmt().length();
             if (opt->is_separator()) {
@@ -544,8 +539,7 @@ ArgParse::briefusage () const
     int columns = Sysutil::terminal_columns ();
 
     std::string pending;
-    for (unsigned int i=0; i<m_option.size(); ++i) {
-        ArgOption *opt = m_option[i];
+    for (auto&& opt : m_option) {
         if (opt->description().length()) {
             if (opt->is_separator()) {
                 if (pending.size())

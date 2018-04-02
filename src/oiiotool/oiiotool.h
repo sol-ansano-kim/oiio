@@ -31,10 +31,11 @@
 
 #ifndef OIIOTOOL_H
 
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/refcnt.h"
-#include "OpenImageIO/timer.h"
-#include "OpenImageIO/sysutil.h"
+#include <memory>
+
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/timer.h>
+#include <OpenImageIO/sysutil.h>
 
 
 OIIO_NAMESPACE_BEGIN
@@ -43,7 +44,7 @@ namespace OiioTool {
 typedef int (*CallbackFunction)(int argc,const char*argv[]);
 
 class ImageRec;
-typedef shared_ptr<ImageRec> ImageRecRef;
+typedef std::shared_ptr<ImageRec> ImageRecRef;
 
 
 /// Polycy hints for reading images
@@ -79,24 +80,26 @@ public:
     bool autoorient;
     bool autocc;                      // automatically color correct
     bool nativeread;                  // force native data type reads
+    bool printinfo_verbose;
     int cachesize;
     int autotile;
     int frame_padding;
     std::string full_command_line;
     std::string printinfo_metamatch;
     std::string printinfo_nometamatch;
+    std::string printinfo_format;
     ImageSpec input_config;           // configuration options for reading
-    bool input_config_set;
+    std::string input_channel_set;    // Optional input channel set
 
     // Output options
-    TypeDesc output_dataformat;
+    TypeDesc output_dataformat;       // Requested output data format
     std::map<std::string,std::string> output_channelformats;
-    int output_bitspersample;
-    bool output_scanline;
-    int output_tilewidth, output_tileheight;
     std::string output_compression;
-    int output_quality;
     std::string output_planarconfig;
+    int output_bitspersample;
+    int output_tilewidth, output_tileheight;
+    int output_quality;
+    bool output_scanline;
     bool output_adjust_time;
     bool output_autocrop;
     bool output_autotrim;
@@ -116,19 +119,25 @@ public:
     ImageRecRef curimg;                      // current image
     std::vector<ImageRecRef> image_stack;    // stack of previous images
     std::map<std::string, ImageRecRef> image_labels; // labeled images
-    ImageCache *imagecache;                  // back ptr to ImageCache
-    int return_value;                        // oiiotool command return code
+    ImageCache *imagecache = nullptr;        // back ptr to ImageCache
     ColorConfig colorconfig;                 // OCIO color config
-    Timer total_readtime;
-    Timer total_writetime;
-    double total_imagecache_readtime;
+    Timer total_runtime;
+    Timer total_readtime  {Timer::DontStartNow};
+    Timer total_writetime {Timer::DontStartNow};
+    double total_imagecache_readtime = 0.0;
     typedef std::map<std::string, double> TimingMap;
     TimingMap function_times;
-    bool enable_function_timing;
-    size_t peak_memory;
-    int num_outputs;                         // Count of outputs written
-    bool printed_info;                       // printed info at some point
-    int frame_number;
+    size_t peak_memory = 0;
+    int return_value = EXIT_SUCCESS;         // oiiotool command return code
+    int num_outputs = 0;                     // Count of outputs written
+    int frame_number = 0;
+    bool enable_function_timing = true;
+    bool input_config_set = false;
+    bool printed_info = false;               // printed info at some point
+    // Remember the first input dataformats we encountered
+    TypeDesc first_input_dataformat;
+    int first_input_dataformat_bits = 0;
+    std::map<std::string, std::string> first_input_channelformats;
 
     Oiiotool ();
 
@@ -198,7 +207,7 @@ public:
     // pixels.
     bool adjust_geometry (string_view command,
                           int &w, int &h, int &x, int &y, const char *geom,
-                          bool allow_scaling=false);
+                          bool allow_scaling=false) const;
 
     // Expand substitution expressions in string str. Expressions are
     // enclosed in braces: {...}. An expression consists of:
@@ -215,8 +224,8 @@ public:
     int extract_options (std::map<std::string,std::string> &options,
                          std::string command);
 
-    void error (string_view command, string_view explanation="");
-    void warning (string_view command, string_view explanation="");
+    void error (string_view command, string_view explanation="") const;
+    void warning (string_view command, string_view explanation="") const;
 
     size_t check_peak_memory () {
         size_t mem = Sysutil::memory_used();
@@ -239,7 +248,8 @@ private:
 };
 
 
-typedef shared_ptr<ImageBuf> ImageBufRef;
+typedef std::shared_ptr<ImageBuf> ImageBufRef;
+
 
 
 class SubimageRec {
@@ -260,20 +270,32 @@ public:
     const ImageSpec * spec (int i) const {
         return i < miplevels() ? &m_specs[i] : NULL;
     }
+
+    // was_direct_read describes whether this subimage has is unomdified in
+    // content and pixel format (i.e. data type) since it was read from a
+    // preexisting file on disk. We set it to true upon first read, and a
+    // handful of operations that should preserve it, but for almost
+    // everything else, we don't propagate the value (letting it lapse to
+    // false for the result of most image operations).
+    bool was_direct_read () const { return m_was_direct_read; }
+    void was_direct_read (bool f) { m_was_direct_read = f; }
+
 private:
     std::vector<ImageBufRef> m_miplevels;
     std::vector<ImageSpec> m_specs;
+    bool m_was_direct_read = false;  ///< Guaranteed pixel data type unmodified since read
     friend class ImageRec;
 };
 
 
 
+/// ImageRec is conceptually similar to an ImageBuf, except that whereas an
+/// IB is truly a single image, an ImageRec encapsulates multiple subimages,
+/// and potentially MIPmap levels for each subimage.
 class ImageRec {
 public:
     ImageRec (const std::string &name, ImageCache *imagecache)
-        : m_name(name), m_elaborated(false),
-          m_metadata_modified(false), m_pixels_modified(false),
-          m_imagecache(imagecache)
+        : m_name(name), m_imagecache(imagecache)
     { }
 
     // Initialize an ImageRec with a collection of prepared ImageSpec's.
@@ -304,6 +326,8 @@ public:
     // Initialize an ImageRec with the given spec.
     ImageRec (const std::string &name, const ImageSpec &spec,
               ImageCache *imagecache);
+
+    ImageRec (const ImageRec &copy) = delete;  // Disallow copy ctr
 
     enum WinMerge { WinMergeUnion, WinMergeIntersection, WinMergeA, WinMergeB };
 
@@ -350,7 +374,8 @@ public:
     // it's lazily kept as name only, without reading the file.)
     bool elaborated () const { return m_elaborated; }
 
-    bool read (ReadPolicy readpolicy = ReadDefault);
+    bool read (ReadPolicy readpolicy = ReadDefault,
+               string_view channel_set = "");
 
     // ir(subimg,mip) references a specific MIP level of a subimage
     // ir(subimg) references the first MIP level of a subimage
@@ -367,6 +392,10 @@ public:
     }
     const ImageSpec * spec (int subimg=0, int mip=0) const {
         return subimg < subimages() ? m_subimages[subimg].spec(mip) : NULL;
+    }
+
+    const ImageSpec * nativespec (int subimg=0, int mip=0) const {
+        return subimg < subimages() ? &((*this)(subimg,mip).nativespec()) : nullptr;
     }
 
     bool was_output () const { return m_was_output; }
@@ -386,6 +415,12 @@ public:
 
     std::time_t time() const { return m_time; }
 
+    // Request that any eventual input reads be stored internally in this
+    // format. UNKNOWN means to use the usual default logic.
+    void input_dataformat (TypeDesc dataformat) {
+        m_input_dataformat = dataformat;
+    }
+
     // This should be called if for some reason the underlying
     // ImageBuf's spec may have been modified in place.  We need to
     // update the outer copy held by the SubimageRec.
@@ -402,9 +437,10 @@ public:
 
     /// Error reporting for ImageRec: call this with printf-like arguments.
     /// Note however that this is fully typesafe!
-    /// void error (const char *format, ...)
-    TINYFORMAT_WRAP_FORMAT (void, error, const,
-        std::ostringstream msg;, msg, append_error(msg.str());)
+    template<typename... Args>
+    void error (string_view fmt, const Args&... args) const {
+        append_error(Strutil::format (fmt, args...));
+    }
 
     /// Return true if the IR has had an error and has an error message
     /// to retrieve via geterror().
@@ -417,13 +453,14 @@ public:
 
 private:
     std::string m_name;
-    bool m_elaborated;
-    bool m_metadata_modified;
-    bool m_pixels_modified;
-    bool m_was_output;
+    bool m_elaborated = false;
+    bool m_metadata_modified = false;
+    bool m_pixels_modified = false;
+    bool m_was_output = false;
     std::vector<SubimageRec> m_subimages;
     std::time_t m_time;  //< Modification time of the input file
-    ImageCache *m_imagecache;
+    TypeDesc m_input_dataformat;
+    ImageCache *m_imagecache = nullptr;
     mutable std::string m_err;
     ImageSpec m_configspec;
 
@@ -446,6 +483,7 @@ struct print_info_options {
     bool dumpdata_showempty;
     std::string metamatch;
     std::string nometamatch;
+    std::string infoformat;
     size_t namefieldlength;
 
     print_info_options ()
@@ -495,6 +533,10 @@ enum DiffErrors {
 
 int do_action_diff (ImageRec &ir0, ImageRec &ir1, Oiiotool &options,
                     int perceptual = 0);
+
+bool decode_channel_set (const ImageSpec &spec, string_view chanlist,
+                    std::vector<std::string> &newchannelnames,
+                    std::vector<int> &channels, std::vector<float> &values);
 
 
 
@@ -613,7 +655,14 @@ public:
         cleanup ();
 
         // Add the time we spent to the stats total for this op type.
-        ot.function_times[opname()] += timer();
+        double optime = timer();
+        ot.function_times[opname()] += optime;
+        if (ot.debug) {
+            Strutil::printf ("    %s took %s  (total time %s, mem %s)\n",
+                             opname(), Strutil::timeintervalformat(optime,2),
+                             Strutil::timeintervalformat(ot.total_runtime(),2),
+                             Strutil::memformat(Sysutil::memory_used()));
+        }
         return 0;
     }
 

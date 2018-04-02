@@ -33,9 +33,9 @@
 // Format reference: ftp://ftp.sgi.com/graphics/SGIIMAGESPEC
 
 #include <cstdio>
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
@@ -87,7 +87,7 @@ namespace sgi_pvt {
 
 
 
-class SgiInput : public ImageInput {
+class SgiInput final : public ImageInput {
  public:
     SgiInput () { init(); }
     virtual ~SgiInput () { close(); }
@@ -136,7 +136,7 @@ class SgiInput : public ImageInput {
 
 
 
-class SgiOutput : public ImageOutput {
+class SgiOutput final : public ImageOutput {
  public:
     SgiOutput () : m_fd(NULL) { }
     virtual ~SgiOutput () { close(); }

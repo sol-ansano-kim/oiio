@@ -49,6 +49,7 @@
 
 
 #pragma once
+#define OIIO_FMATH_H 1
 
 #include <cmath>
 #include <limits>
@@ -57,11 +58,12 @@
 #include <cstring>
 #include <cmath>
 
-#include "oiioversion.h"   /* Just for the OIIO_NAMESPACE stuff */
-#include "platform.h"
-#include "dassert.h"
-#include "missing_math.h"
-#include "simd.h"
+#include <OpenImageIO/oiioversion.h>
+#include <OpenImageIO/platform.h>
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/missing_math.h>
+#include <OpenImageIO/simd.h>
+#include <OpenImageIO/array_view.h>
 
 
 OIIO_NAMESPACE_BEGIN
@@ -222,15 +224,15 @@ clamp (const T& a, const T& low, const T& high)
 }
 
 
-// Specialization of clamp for float4
-template<> inline simd::float4
-clamp (const simd::float4& a, const simd::float4& low, const simd::float4& high)
+// Specialization of clamp for vfloat4
+template<> inline simd::vfloat4
+clamp (const simd::vfloat4& a, const simd::vfloat4& low, const simd::vfloat4& high)
 {
     return simd::min (high, simd::max (low, a));
 }
 
-template<> inline simd::float8
-clamp (const simd::float8& a, const simd::float8& low, const simd::float8& high)
+template<> inline simd::vfloat8
+clamp (const simd::vfloat8& a, const simd::vfloat8& low, const simd::vfloat8& high)
 {
     return simd::min (high, simd::max (low, a));
 }
@@ -239,7 +241,7 @@ clamp (const simd::float8& a, const simd::float8& low, const simd::float8& high)
 
 /// Fused multiply and add: (a*b + c)
 inline float madd (float a, float b, float c) {
-#if OIIO_FMA_ENABLED && (OIIO_CPLUSPLUS_VERSION >= 11)
+#if OIIO_FMA_ENABLED
     // C++11 defines std::fma, which we assume is implemented using an
     // intrinsic.
     return std::fma (a, b, c);
@@ -443,13 +445,11 @@ bicubic_interp (const T **val, T s, T t, int n, T *result)
 
 
 
-/// Return floor(x) as an int, as efficiently as possible.
+/// Return floor(x) cast to an int.
 inline int
 ifloor (float x)
 {
-    // Find the greatest whole number <= x.  This cast is faster than
-    // calling floorf.
-    return (int) x - (x < 0.0f ? 1 : 0);
+    return (int)floorf(x);
 }
 
 
@@ -461,10 +461,36 @@ ifloor (float x)
 inline float
 floorfrac (float x, int *xint)
 {
+#if 1
+    float f = std::floor(x);
+    *xint = int(f);
+    return x - f;
+#else /* vvv This idiom is slower */
     int i = ifloor(x);
     *xint = i;
     return x - static_cast<float>(i);   // Return the fraction left over
+#endif
 }
+
+
+inline simd::vfloat4 floorfrac (const simd::vfloat4& x, simd::vint4 *xint) {
+    simd::vfloat4 f = simd::floor(x);
+    *xint = simd::vint4(f);
+    return x - f;
+}
+
+inline simd::vfloat8 floorfrac (const simd::vfloat8& x, simd::vint8 *xint) {
+    simd::vfloat8 f = simd::floor(x);
+    *xint = simd::vint8(f);
+    return x - f;
+}
+
+inline simd::vfloat16 floorfrac (const simd::vfloat16& x, simd::vint16 *xint) {
+    simd::vfloat16 f = simd::floor(x);
+    *xint = simd::vint16(f);
+    return x - f;
+}
+
 
 
 
@@ -498,6 +524,12 @@ sincos (double x, double* sine, double* cosine)
     *sine = std::sin(x);
     *cosine = std::cos(x);
 #endif
+}
+
+
+inline float sign (float x)
+{
+    return x < 0.0f ? -1.0f : (x==0.0f ? 0.0f : 1.0f);
 }
 
 
@@ -662,10 +694,10 @@ inline void convert_type<uint8_t,float> (const uint8_t *src,
                                          float _min, float _max)
 {
     float scale (1.0f/std::numeric_limits<uint8_t>::max());
-    simd::float4 scale_simd (scale);
+    simd::vfloat4 scale_simd (scale);
     for ( ; n >= 4; n -= 4, src += 4, dst += 4) {
-        simd::float4 s_simd (src);
-        simd::float4 d_simd = s_simd * scale_simd;
+        simd::vfloat4 s_simd (src);
+        simd::vfloat4 d_simd = s_simd * scale_simd;
         d_simd.store (dst);
     }
     while (n--)
@@ -680,10 +712,10 @@ inline void convert_type<uint16_t,float> (const uint16_t *src,
                                           float _min, float _max)
 {
     float scale (1.0f/std::numeric_limits<uint16_t>::max());
-    simd::float4 scale_simd (scale);
+    simd::vfloat4 scale_simd (scale);
     for ( ; n >= 4; n -= 4, src += 4, dst += 4) {
-        simd::float4 s_simd (src);
-        simd::float4 d_simd = s_simd * scale_simd;
+        simd::vfloat4 s_simd (src);
+        simd::vfloat4 d_simd = s_simd * scale_simd;
         d_simd.store (dst);
     }
     while (n--)
@@ -698,7 +730,7 @@ inline void convert_type<half,float> (const half *src,
                                       float _min, float _max)
 {
     for ( ; n >= 4; n -= 4, src += 4, dst += 4) {
-        simd::float4 s_simd (src);
+        simd::vfloat4 s_simd (src);
         s_simd.store (dst);
     }
     while (n--)
@@ -716,13 +748,13 @@ convert_type<float,uint16_t> (const float *src, uint16_t *dst, size_t n,
     float min = std::numeric_limits<uint16_t>::min();
     float max = std::numeric_limits<uint16_t>::max();
     float scale = max;
-    simd::float4 max_simd (max);
-    simd::float4 one_half_simd (0.5f);
-    simd::float4 zero_simd (0.0f);
+    simd::vfloat4 max_simd (max);
+    simd::vfloat4 one_half_simd (0.5f);
+    simd::vfloat4 zero_simd (0.0f);
     for ( ; n >= 4; n -= 4, src += 4, dst += 4) {
-        simd::float4 scaled = simd::round (simd::float4(src) * max_simd);
-        simd::float4 clamped = clamp (scaled, zero_simd, max_simd);
-        simd::int4 i (clamped);
+        simd::vfloat4 scaled = simd::round (simd::vfloat4(src) * max_simd);
+        simd::vfloat4 clamped = clamp (scaled, zero_simd, max_simd);
+        simd::vint4 i (clamped);
         i.store (dst);
     }
     while (n--)
@@ -738,13 +770,13 @@ convert_type<float,uint8_t> (const float *src, uint8_t *dst, size_t n,
     float min = std::numeric_limits<uint8_t>::min();
     float max = std::numeric_limits<uint8_t>::max();
     float scale = max;
-    simd::float4 max_simd (max);
-    simd::float4 one_half_simd (0.5f);
-    simd::float4 zero_simd (0.0f);
+    simd::vfloat4 max_simd (max);
+    simd::vfloat4 one_half_simd (0.5f);
+    simd::vfloat4 zero_simd (0.0f);
     for ( ; n >= 4; n -= 4, src += 4, dst += 4) {
-        simd::float4 scaled = simd::round (simd::float4(src) * max_simd);
-        simd::float4 clamped = clamp (scaled, zero_simd, max_simd);
-        simd::int4 i (clamped);
+        simd::vfloat4 scaled = simd::round (simd::vfloat4(src) * max_simd);
+        simd::vfloat4 clamped = clamp (scaled, zero_simd, max_simd);
+        simd::vint4 i (clamped);
         i.store (dst);
     }
     while (n--)
@@ -759,7 +791,7 @@ convert_type<float,half> (const float *src, half *dst, size_t n,
                           half _min, half _max)
 {
     for ( ; n >= 4; n -= 4, src += 4, dst += 4) {
-        simd::float4 s (src);
+        simd::vfloat4 s (src);
         s.store (dst);
     }
     while (n--)
@@ -1031,11 +1063,7 @@ inline T safe_log2 (T x) {
     // match clamping from fast version
     if (x < std::numeric_limits<T>::min()) x = std::numeric_limits<T>::min();
     if (x > std::numeric_limits<T>::max()) x = std::numeric_limits<T>::max();
-#if OIIO_CPLUSPLUS_VERSION >= 11
     return std::log2(x);
-#else
-    return log2f(x);   // punt: just use the float one
-#endif
 }
 
 /// Safe log: clamp to valid domain.
@@ -1059,11 +1087,7 @@ inline T safe_log10 (T x) {
 /// Safe logb: clamp to valid domain.
 template <typename T>
 inline T safe_logb (T x) {
-#if OIIO_CPLUSPLUS_VERSION >= 11
     return (x != T(0)) ? std::logb(x) : -std::numeric_limits<T>::max();
-#else
-    return (x != T(0)) ? logbf(x) : -std::numeric_limits<T>::max();
-#endif
 }
 
 /// Safe pow: clamp the domain so it never returns Inf or NaN or has divide
@@ -1117,7 +1141,7 @@ inline int fast_rint (float x) {
 #endif
 }
 
-inline simd::int4 fast_rint (const simd::float4& x) {
+inline simd::vint4 fast_rint (const simd::vfloat4& x) {
     return simd::rint (x);
 }
 
@@ -1694,6 +1718,23 @@ T invert (Func &func, T y, T xmin=0.0, T xmax=1.0,
             return x;   // converged
     }
     return x;
+}
+
+
+
+/// Linearly interpolate a list of evenly-spaced knots y[0..len-1] with
+/// y[0] corresponding to the value at x==0.0 and y[len-1] corresponding to
+/// x==1.0.
+inline float
+interpolate_linear (float x, array_view_strided<const float> y)
+{
+    DASSERT_MSG (y.size() >= 2, "interpolate_linear needs at least 2 knot values (%zd)", y.size());
+    x = clamp (x, float(0.0), float(1.0));
+    int nsegs = int(y.size()) - 1;
+    int segnum;
+    x = floorfrac (x*nsegs, &segnum);
+    int nextseg = std::min (segnum+1, nsegs);
+    return lerp (y[segnum], y[nextseg], x);
 }
 
 // (end miscellaneous numerical methods)

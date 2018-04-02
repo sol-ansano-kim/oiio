@@ -36,18 +36,18 @@
 #include "ico.h"
 #include "../png.imageio/png_pvt.h"
 
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/typedesc.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/thread.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/typedesc.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/thread.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/fmath.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
 using namespace ICO_pvt;
 
-class ICOOutput : public ImageOutput {
+class ICOOutput final : public ImageOutput {
 public:
     ICOOutput ();
     virtual ~ICOOutput ();
@@ -182,8 +182,7 @@ ICOOutput::open (const std::string &name, const ImageSpec &userspec,
     // check if the client wants this subimage written as PNG
     // also force PNG if image size is 256 because ico_header->width and height
     // are 8-bit
-    const ImageIOParameter *p = m_spec.find_attribute ("ico:PNG",
-                                                       TypeDesc::TypeInt);
+    const ParamValue *p = m_spec.find_attribute ("ico:PNG", TypeInt);
     m_want_png = (p && *(int *)p->data())
                  || m_spec.width == 256 || m_spec.height == 256;
 

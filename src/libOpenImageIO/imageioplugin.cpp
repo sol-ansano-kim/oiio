@@ -34,13 +34,11 @@
 #include <string>
 #include <vector>
 
-#include <boost/foreach.hpp>
-
-#include "OpenImageIO/dassert.h"
-#include "OpenImageIO/plugin.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/imageio.h"
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/plugin.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/imageio.h>
 #include "imageio_pvt.h"
 
 
@@ -131,6 +129,16 @@ declare_imageio_format (const std::string &format_name,
     if (format_list.length())
         format_list += std::string(",");
     format_list += format_name;
+    if (input_creator) {
+        if (input_format_list.length())
+            input_format_list += std::string(",");
+        input_format_list += format_name;
+    }
+    if (output_creator) {
+        if (output_format_list.length())
+            output_format_list += std::string(",");
+        output_format_list += format_name;
+    }
     if (extension_list.length())
         extension_list += std::string(";");
     extension_list += format_name + std::string(":");
@@ -158,10 +166,10 @@ catalog_plugin (const std::string &format_name,
             // It's ok if they're both the same file; just skip it.
             return;
         }
-        OIIO::debugmsg ("OpenImageIO WARNING: %s had multiple plugins:\n"
-                        "\t\"%s\"\n    as well as\n\t\"%s\"\n"
-                        "    Ignoring all but the first one.\n",
-                        format_name, found_path->second, plugin_fullpath);
+        OIIO::debug ("OpenImageIO WARNING: %s had multiple plugins:\n"
+                     "\t\"%s\"\n    as well as\n\t\"%s\"\n"
+                     "    Ignoring all but the first one.\n",
+                     format_name, found_path->second, plugin_fullpath);
         return;
     }
 
@@ -216,10 +224,15 @@ catalog_plugin (const std::string &format_name,
     extern const char *name ## _output_extensions[];    \
     extern const char *name ## _input_extensions[];     \
     extern const char *name ## _imageio_library_version();
+#define PLUGENTRY_RO(name)                               \
+    ImageInput *name ## _input_imageio_create ();       \
+    extern const char *name ## _input_extensions[];     \
+    extern const char *name ## _imageio_library_version();
 
     PLUGENTRY (bmp);
     PLUGENTRY (cineon);
     PLUGENTRY (dds);
+    PLUGENTRY_RO (dicom);
     PLUGENTRY (dpx);
     PLUGENTRY (ffmpeg);
     PLUGENTRY (field3d);
@@ -233,13 +246,13 @@ catalog_plugin (const std::string &format_name,
     PLUGENTRY (openexr);
     PLUGENTRY (png);
     PLUGENTRY (pnm);
-    PLUGENTRY (psd);
-    PLUGENTRY (ptex);
-    PLUGENTRY (raw);
+    PLUGENTRY_RO (psd);
+    PLUGENTRY_RO (ptex);
+    PLUGENTRY_RO (raw);
     PLUGENTRY (rla);
     PLUGENTRY (sgi);
     PLUGENTRY (socket);
-    PLUGENTRY (softimage);
+    PLUGENTRY_RO (softimage);
     PLUGENTRY (tiff);
     PLUGENTRY (targa);
     PLUGENTRY (webp);
@@ -267,13 +280,22 @@ catalog_builtin_plugins ()
                    (ImageOutput::Creator) name ## _output_imageio_create, \
                    name ## _output_extensions,                            \
                    name ## _imageio_library_version())
+#define DECLAREPLUG_RO(name)                                              \
+    declare_imageio_format (#name,                                        \
+                   (ImageInput::Creator) name ## _input_imageio_create,   \
+                   name ## _input_extensions,                             \
+                   NULL, NULL,                                            \
+                   name ## _imageio_library_version())
 
     DECLAREPLUG (bmp);
-    DECLAREPLUG (cineon);
-    DECLAREPLUG (dds);
+    DECLAREPLUG_RO (cineon);
+    DECLAREPLUG_RO (dds);
+#ifdef USE_DCMTK
+    DECLAREPLUG_RO (dicom);
+#endif
     DECLAREPLUG (dpx);
 #ifdef USE_FFMPEG
-    DECLAREPLUG (ffmpeg);
+    DECLAREPLUG_RO (ffmpeg);
 #endif
 #ifdef USE_FIELD3D
     DECLAREPLUG (field3d);
@@ -292,19 +314,19 @@ catalog_builtin_plugins ()
     DECLAREPLUG (openexr);
     DECLAREPLUG (png);
     DECLAREPLUG (pnm);
-    DECLAREPLUG (psd);
+    DECLAREPLUG_RO (psd);
 #ifdef USE_PTEX
-    DECLAREPLUG (ptex);
+    DECLAREPLUG_RO (ptex);
 #endif
 #ifdef USE_LIBRAW
-    DECLAREPLUG (raw);
+    DECLAREPLUG_RO (raw);
 #endif
     DECLAREPLUG (rla);
     DECLAREPLUG (sgi);
 #ifdef USE_BOOST_ASIO
     DECLAREPLUG (socket);
 #endif
-    DECLAREPLUG (softimage);
+    DECLAREPLUG_RO (softimage);
     DECLAREPLUG (tiff);
     DECLAREPLUG (targa);
 #ifdef USE_WEBP
@@ -356,10 +378,10 @@ pvt::catalog_all_plugins (std::string searchpath)
     size_t patlen = pattern.length();
     std::vector<std::string> dirs;
     Filesystem::searchpath_split (searchpath, dirs, true);
-    BOOST_FOREACH (const std::string &dir, dirs) {
+    for (const auto &dir : dirs) {
         std::vector<std::string> dir_entries;
         Filesystem::get_directory_entries (dir, dir_entries);
-        BOOST_FOREACH (const std::string &full_filename, dir_entries) {
+        for (const auto  &full_filename : dir_entries) {
             std::string leaf = Filesystem::filename (full_filename);
             size_t found = leaf.find (pattern);
             if (found != std::string::npos &&
@@ -450,17 +472,30 @@ ImageInput::create (const std::string &filename,
 
 
 ImageInput *
-ImageInput::create (const std::string &filename, 
+ImageInput::create (const std::string &filename,
                     bool do_open,
                     const std::string &plugin_searchpath)
 {
-    if (filename.empty()) { // Can't even guess if no filename given
+    // In case the 'filename' was really a REST-ful URI with query/config
+    // details tacked on to the end, strip them off so we can correctly
+    // extract the file extension.
+    std::map<std::string,std::string> args;
+    std::string filename_stripped;
+    if (! Strutil::get_rest_arguments (filename, filename_stripped, args)) {
+        pvt::error ("ImageInput::create() called with malformed filename");
+        return nullptr;
+    }
+
+    if (filename_stripped.empty())
+        filename_stripped = filename;
+
+    if (filename_stripped.empty()) { // Can't even guess if no filename given
         pvt::error ("ImageInput::create() called with no filename");
         return NULL;
     }
 
     // Extract the file extension from the filename (without the leading dot)
-    std::string format = Filesystem::extension (filename, false);
+    std::string format = Filesystem::extension (filename_stripped, false);
     if (format.empty()) {
         // If the file had no extension, maybe it was itself the format name
         format = filename;

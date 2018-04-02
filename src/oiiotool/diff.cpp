@@ -39,15 +39,15 @@
 #include <string>
 #include <iomanip>
 
-#include "OpenImageIO/argparse.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagebufalgo.h"
-#include "OpenImageIO/filter.h"
+#include <OpenImageIO/argparse.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
+#include <OpenImageIO/filter.h>
 
 #include "oiiotool.h"
 
-OIIO_NAMESPACE_USING
+using namespace OIIO;
 using namespace OiioTool;
 using namespace ImageBufAlgo;
 
@@ -165,6 +165,14 @@ OiioTool::do_action_diff (ImageRec &ir0, ImageRec &ir1,
                         std::cout << ", " << img1.spec().channelnames[cr.maxc] << ')';
                     else
                         std::cout << ", channel " << cr.maxc << ')';
+                    if (! img0.deep()) {
+                        std::cout << "  values are ";
+                        for (int c = 0; c < img0.spec().nchannels; ++c)
+                            std::cout << (c ? ", " : "") << img0.getchannel(cr.maxx, cr.maxy, 0, c);
+                        std::cout << " vs ";
+                        for (int c = 0; c < img1.spec().nchannels; ++c)
+                            std::cout << (c ? ", " : "") << img1.getchannel(cr.maxx, cr.maxy, 0, c);
+                    }
                 }
                 std::cout << "\n";
 

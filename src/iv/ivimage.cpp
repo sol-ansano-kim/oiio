@@ -31,12 +31,11 @@
 
 #include <iostream>
 
-#include <boost/foreach.hpp>
 #include <OpenEXR/half.h>
 
 #include "imageviewer.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/fmath.h>
 
 
 IvImage::IvImage (const std::string &filename)
@@ -71,6 +70,13 @@ IvImage::init_spec_iv (const std::string &filename, int subimage, int miplevel)
     bool ok = ImageBuf::init_spec (filename, subimage, miplevel);
     if (ok && m_file_dataformat.basetype == TypeDesc::UNKNOWN) {
         m_file_dataformat = spec().format;
+    }
+    string_view colorspace = spec().get_string_attribute ("oiio:ColorSpace");
+    if (Strutil::istarts_with (colorspace, "GammaCorrected")) {
+        float g = Strutil::from_string<float>(colorspace.c_str()+14);
+        if (g > 1.0 && g <= 3.0 /*sanity check*/) {
+            gamma (gamma()/g);
+        }
     }
     return ok;
 }
@@ -194,7 +200,7 @@ IvImage::longinfo () const
         if (m_spec.z_channel >= 0)
             m_longinfo += html_table_row ("Depth (z) channel", m_spec.z_channel);
 
-        BOOST_FOREACH (const ImageIOParameter &p, m_spec.extra_attribs) {
+        for (auto&& p : m_spec.extra_attribs) {
             std::string s = m_spec.metadata_val (p, true);
             m_longinfo += html_table_row (p.name().c_str(), s);
         }

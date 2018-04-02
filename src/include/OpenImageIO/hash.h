@@ -39,50 +39,31 @@
 #define OPENIMAGEIO_HASH_H
 
 #include <vector>
-#include <assert.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>   // for memcpy and memset
+#include <cassert>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <utility>
+#include <unordered_map>
 
-#include "export.h"
-#include "oiioversion.h"
-#include "platform.h"
-#include "fmath.h"   /* for endian */
-#include "string_view.h"
-#include "array_view.h"
+#include <OpenImageIO/export.h>
+#include <OpenImageIO/oiioversion.h>
+#include <OpenImageIO/fmath.h>
+#include <OpenImageIO/string_view.h>
+#include <OpenImageIO/array_view.h>
 
-#if OIIO_CPLUSPLUS_VERSION >= 11 || OIIO_MSVS_AT_LEAST_2013
-#  include <unordered_map>
-#else /* FIXME(C++11): remove this after making C++11 the baseline */
-#  include <boost/unordered_map.hpp>
-#endif
 
 
 OIIO_NAMESPACE_BEGIN
 
-// Define OIIO::unordered_map and OIIO::hash as either std or boost.
-#if OIIO_CPLUSPLUS_VERSION >= 11 || OIIO_MSVS_AT_LEAST_2013
 using std::unordered_map;
 using std::hash;
-#else /* FIXME(C++11): remove this after making C++11 the baseline */
-using boost::unordered_map;
-using boost::hash;
-#endif
 
 
 namespace xxhash {
 
 // xxhash:  http://code.google.com/p/xxhash/
 // It's BSD licensed.
-
-OIIO_DEPRECATED("Use XXH32(). (Deprecated since 1.6.")
-unsigned int OIIO_API XXH_fast32 (const void* input, int len,
-                                  unsigned int seed=1771);
-
-OIIO_DEPRECATED("Use XXH32(). (Deprecated since 1.6.")
-unsigned int OIIO_API XXH_strong32 (const void* input, int len,
-                                    unsigned int seed=1771);
 
 unsigned int       OIIO_API XXH32 (const void* input, size_t length,
                                    unsigned seed=1771);

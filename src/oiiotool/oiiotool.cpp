@@ -39,28 +39,40 @@
 #include <sstream>
 #include <algorithm>
 #include <utility>
-#include <ctype.h>
+#include <cctype>
 #include <map>
-
-#include <boost/foreach.hpp>
-#include <boost/regex.hpp>
 
 #include <OpenEXR/ImfTimeCode.h>
 
-#include "OpenImageIO/argparse.h"
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/imagebuf.h"
-#include "OpenImageIO/imagebufalgo.h"
-#include "OpenImageIO/sysutil.h"
-#include "OpenImageIO/strutil.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/filter.h"
-#include "OpenImageIO/color.h"
-#include "OpenImageIO/timer.h"
+#include <OpenImageIO/argparse.h>
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
+#include <OpenImageIO/sysutil.h>
+#include <OpenImageIO/strutil.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/filter.h>
+#include <OpenImageIO/color.h>
+#include <OpenImageIO/timer.h>
 
 #include "oiiotool.h"
 
-OIIO_NAMESPACE_USING
+#ifdef USE_BOOST_REGEX
+# include <boost/regex.hpp>
+  using boost::regex;
+  using boost::regex_search;
+  using boost::regex_replace;
+  using boost::match_results;
+#else
+# include <regex>
+  using std::regex;
+  using std::regex_search;
+  using std::regex_replace;
+  using std::match_results;
+#endif
+
+
+using namespace OIIO;
 using namespace OiioTool;
 using namespace ImageBufAlgo;
 
@@ -119,14 +131,6 @@ static Oiiotool ot;
 
 
 Oiiotool::Oiiotool ()
-    : imagecache(NULL),
-      return_value (EXIT_SUCCESS),
-      total_readtime (Timer::DontStartNow),
-      total_writetime (Timer::DontStartNow),
-      total_imagecache_readtime (0.0),
-      enable_function_timing(true),
-      peak_memory(0),
-      num_outputs(0), printed_info(false), frame_number(0)
 {
     clear_options ();
 }
@@ -157,6 +161,7 @@ Oiiotool::clear_options ()
     full_command_line.clear ();
     printinfo_metamatch.clear ();
     printinfo_nometamatch.clear ();
+    printinfo_verbose = false;
     input_config = ImageSpec();
     input_config_set = false;
     output_dataformat = TypeDesc::UNKNOWN;
@@ -184,6 +189,9 @@ Oiiotool::clear_options ()
     m_pending_argc = 0;
     frame_number = 0;
     frame_padding = 0;
+    first_input_dataformat = TypeUnknown;
+    first_input_dataformat_bits = 0;
+    first_input_channelformats.clear();
 }
 
 
@@ -237,17 +245,15 @@ Oiiotool::read (ImageRecRef img, ReadPolicy readpolicy)
         output_tilewidth = nspec.tile_width;
         output_tileheight = nspec.tile_height;
     }
-    // If we do not yet have an expected output format, set it based on
-    // this image (presumably the first one read.
-    if (output_dataformat == TypeDesc::UNKNOWN) {
-        output_dataformat = nspec.format;
-        if (! output_bitspersample)
-            output_bitspersample = nspec.get_int_attribute ("oiio:BitsPerSample");
-    }
-    if (output_channelformats.empty() && nspec.channelformats.size()) {
-        for (int c = 0; c < nspec.nchannels; ++c) {
-            std::string chname = nspec.channelnames[c];
-            output_channelformats[chname] = std::string(nspec.channelformat(c).c_str());
+    // Remember the first input format we encountered.
+    if (first_input_dataformat == TypeUnknown) {
+        first_input_dataformat = nspec.format;
+        first_input_dataformat_bits = nspec.get_int_attribute ("oiio:BitsPerSample");
+        if (nspec.channelformats.size()) {
+            for (int c = 0; c < nspec.nchannels; ++c) {
+                std::string chname = nspec.channelnames[c];
+                first_input_channelformats[chname] = std::string(nspec.channelformat(c).c_str());
+            }
         }
     }
 
@@ -298,19 +304,22 @@ Oiiotool::process_pending ()
 
 
 void
-Oiiotool::error (string_view command, string_view explanation)
+Oiiotool::error (string_view command, string_view explanation) const
 {
     std::cerr << "oiiotool ERROR: " << command;
     if (explanation.length())
         std::cerr << " : " << explanation;
     std::cerr << "\n";
+    // Repeat the command line, so if oiiotool is being called from a
+    // script, it's easy to debug how the command was mangled.
+    std::cerr << "Full command line was:\n> " << full_command_line << "\n";
     exit (-1);
 }
 
 
 
 void
-Oiiotool::warning (string_view command, string_view explanation)
+Oiiotool::warning (string_view command, string_view explanation) const
 {
     std::cerr << "oiiotool WARNING: " << command;
     if (explanation.length())
@@ -373,8 +382,7 @@ set_autotile (int argc, const char *argv[])
     ASSERT (argc == 2);
     ot.autotile = atoi(argv[1]);
     ot.imagecache->attribute ("autotile", ot.autotile);
-    if (ot.autotile)
-        ot.imagecache->attribute ("autoscanline", 1);
+    ot.imagecache->attribute ("autoscanline", int(ot.autotile ? 1 : 0));
     return 0;
 }
 
@@ -401,6 +409,21 @@ set_dumpdata (int argc, const char *argv[])
     options["empty"] = "1";
     ot.extract_options (options, command);
     ot.dumpdata_showempty = Strutil::from_string<int> (options["empty"]);
+    return 0;
+}
+
+
+
+static int
+set_printinfo (int argc, const char *argv[])
+{
+    ASSERT (argc == 1);
+    string_view command = ot.express (argv[0]);
+    ot.printinfo = true;
+    std::map<std::string,std::string> options;
+    ot.extract_options (options, command);
+    ot.printinfo_format = options["format"];
+    ot.printinfo_verbose = Strutil::from_string<int>(options["verbose"]);
     return 0;
 }
 
@@ -491,32 +514,27 @@ get_value_override (string_view localoption, string_view defaultval)
 
 
 
+// Given a (potentially empty) overall data format, per-channel formats,
+// and bit depth, modify the existing spec.
 static void
-adjust_output_options (string_view filename,
-                       ImageSpec &spec, const Oiiotool &ot,
-                       bool format_supports_tiles,
-                       std::map<std::string,std::string> &fileoptions)
+set_output_dataformat (ImageSpec& spec, TypeDesc format,
+                       const std::map<std::string,std::string>& channelformats,
+                       int bitdepth)
 {
-    if (ot.output_dataformat != TypeDesc::UNKNOWN) {
-        TypeDesc type (fileoptions["datatype"]);
-        if (type == TypeDesc::UNKNOWN)
-            type = ot.output_dataformat;
-        if (type != TypeDesc::UNKNOWN)
-            spec.format = ot.output_dataformat;
-        int bits = get_value_override (fileoptions["bits"], ot.output_bitspersample);
-        if (bits)
-            spec.attribute ("oiio:BitsPerSample", ot.output_bitspersample);
-        else
-            spec.erase_attribute ("oiio:BitsPerSample");
-    }
-    if (ot.output_channelformats.size()) {
+    if (format != TypeUnknown)
+        spec.format = format;
+    if (bitdepth)
+        spec.attribute ("oiio:BitsPerSample", bitdepth);
+    else
+        spec.erase_attribute ("oiio:BitsPerSample");
+    if (channelformats.size()) {
         spec.channelformats.clear ();
         spec.channelformats.resize (spec.nchannels, spec.format);
         for (int c = 0;  c < spec.nchannels;  ++c) {
             if (c >= (int)spec.channelnames.size())
                 break;
-            std::map<std::string,std::string>::const_iterator i = ot.output_channelformats.find (spec.channelnames[c]);
-            if (i != ot.output_channelformats.end()) {
+            auto i = channelformats.find (spec.channelnames[c]);
+            if (i != channelformats.end() && i->second.size()) {
                 int bits = 0;
                 string_to_dataformat (i->second, spec.channelformats[c], bits);
             }
@@ -532,14 +550,91 @@ adjust_output_options (string_view filename,
     } else {
         spec.channelformats.clear ();
     }
+}
 
-    // If we've had tiled input and scanline was not explicitly
-    // requested, we'll try tiled output.
-    if (ot.output_tilewidth && !ot.output_scanline && format_supports_tiles) {
-        spec.tile_width = ot.output_tilewidth;
-        spec.tile_height = ot.output_tileheight;
-        spec.tile_depth = 1;
+
+
+static void
+adjust_output_options (string_view filename,
+                       ImageSpec &spec, const ImageSpec *nativespec,
+                       const Oiiotool &ot,
+                       bool format_supports_tiles,
+                       std::map<std::string,std::string> &fileoptions,
+                       bool was_direct_read = false)
+{
+    // What data format and bit depth should we use for the output? Here's
+    // the logic:
+    // * If a specific request was made on this command (e.g. -o:format=half)
+    //   or globally (e.g., -d half), honor that, with a per-command request
+    //   taking precedence.
+    // * Otherwise, If the buffer is more or less a direct copy from an
+    //   input image (as read, not the result of subsequent operations,
+    //   which will tend to generate float output no matter what the
+    //   inputs), write it out in the same format it was read from.
+    // * Otherwise, output the same type as the FIRST file that was input
+    //   (we are guessing that even if the operations made result buffers
+    //   that were float, the user probably wanted to output it the same
+    //   format as the input, or else she would have said so).
+    // * Otherwise, just write the buffer's format, regardless of how it got
+    //   that way.
+    TypeDesc requested_output_dataformat = ot.output_dataformat;
+    auto requested_output_channelformats = ot.output_channelformats;
+    if (fileoptions["datatype"] != "") {
+        requested_output_dataformat.fromstring (fileoptions["datatype"]);
+        requested_output_channelformats.clear();
+    }
+    int requested_output_bits = get_value_override (fileoptions["bits"], ot.output_bitspersample);
+
+    if (requested_output_dataformat != TypeUnknown) {
+        // Requested an explicit override of datatype
+        set_output_dataformat (spec, requested_output_dataformat,
+                               requested_output_channelformats,
+                               requested_output_bits);
+    }
+    else if (was_direct_read && nativespec) {
+        // Do nothing -- use the file's native data format
+        set_output_dataformat (spec, nativespec->format,
+                               std::map<std::string,std::string>(),
+                               nativespec->get_int_attribute("oiio:BitsPerSample"));
+        spec.channelformats = nativespec->channelformats;
+    }
+    else if (ot.first_input_dataformat != TypeUnknown) {
+        set_output_dataformat (spec, ot.first_input_dataformat,
+                               ot.first_input_channelformats,
+                               ot.first_input_dataformat_bits);
+    }
+
+    // Tiling strategy:
+    // * If a specific request was made for tiled or scanline output, honor
+    //   that (assuming the file format supports it).
+    // * Otherwise, if the buffer is a direct copy from an input image, try
+    //   to write it with the same tile/scanline choices as the input (if
+    //   the file format supports it).
+    // * Otherwise, just default to scanline.
+    int requested_tilewidth = ot.output_tilewidth;
+    int requested_tileheight = ot.output_tileheight;
+    string_view tilesize = fileoptions["tile"];
+    if (tilesize.size()) {
+        int x, y;  // dummy vals for adjust_geometry
+        ot.adjust_geometry ("-o", requested_tilewidth, requested_tileheight,
+                            x, y, tilesize.c_str(), false);
+    }
+    bool requested_scanline = get_value_override (fileoptions["scanline"], ot.output_scanline);
+    if (requested_tilewidth && !requested_scanline && format_supports_tiles) {
+        // Explicit request to tile, honor it.
+        spec.tile_width = requested_tilewidth;
+        spec.tile_height = requested_tileheight ? requested_tileheight : requested_tilewidth;
+        spec.tile_depth = 1;   // FIXME if we ever want volume support
+    } else if (was_direct_read && nativespec &&
+               nativespec->tile_width > 0 && nativespec->tile_height > 0 &&
+               !requested_scanline && format_supports_tiles) {
+        // No explicit request, but a direct read of a tiled input: keep the
+        // input tiling.
+        spec.tile_width = nativespec->tile_width;
+        spec.tile_height = nativespec->tile_height;
+        spec.tile_depth = nativespec->tile_depth;
     } else {
+        // Otherwise, be safe and force scanline output.
         spec.tile_width = spec.tile_height = spec.tile_depth = 0;
     }
 
@@ -681,13 +776,13 @@ set_dataformat (int argc, const char *argv[])
 
     // If we make it here, the format designator was of the form
     //    name0=type0,name1=type1,...
-    for (size_t i = 0;  i < chans.size();  ++i) {
-        const char *eq = strchr(chans[i].c_str(),'=');
+    for (auto& chan : chans) {
+        const char *eq = strchr(chan.c_str(),'=');
         if (eq) {
-            std::string channame (chans[i], 0, eq - chans[i].c_str());
+            std::string channame (chan, 0, eq - chan.c_str());
             ot.output_channelformats[channame] = std::string (eq+1);
         } else {
-            ot.error (command, Strutil::format ("Malformed format designator \"%s\"", chans[i]));
+            ot.error (command, Strutil::format ("Malformed format designator \"%s\"", chan));
         }
     }
 
@@ -704,7 +799,7 @@ set_string_attribute (int argc, const char *argv[])
         ot.warning (argv[0], "no current image available to modify");
         return 0;
     }
-    set_attribute (ot.curimg, argv[1], TypeDesc::TypeString, argv[2],
+    set_attribute (ot.curimg, argv[1], TypeString, argv[2],
                    ot.allsubimages);
     // N.B. set_attribute does expression expansion on its args
     return 0;
@@ -733,11 +828,27 @@ set_any_attribute (int argc, const char *argv[])
 
 
 static bool
-do_erase_attribute (ImageSpec &spec, const std::string &attribname)
+do_erase_attribute (ImageSpec &spec, string_view attribname)
 {
     spec.erase_attribute (attribname);
     return true;
 }
+
+
+
+static int
+erase_attribute (int argc, const char *argv[])
+{
+    ASSERT (argc == 2);
+    if (! ot.curimg.get()) {
+        ot.warning (argv[0], "no current image available to modify");
+        return 0;
+    }
+    string_view pattern = ot.express (argv[1]);
+    return apply_spec_mod (*ot.curimg, do_erase_attribute,
+                           pattern, ot.allsubimages);
+}
+
 
 
 template<class T>
@@ -768,7 +879,7 @@ Oiiotool::get_position (string_view command, string_view geom,
 bool
 Oiiotool::adjust_geometry (string_view command,
                            int &w, int &h, int &x, int &y, const char *geom,
-                           bool allow_scaling)
+                           bool allow_scaling) const
 {
     float scaleX = 1.0f;
     float scaleY = 1.0f;
@@ -908,8 +1019,8 @@ Oiiotool::express_parse_atom(const string_view expr, string_view& s, std::string
         string_view metadata = Strutil::parse_identifier (s, ":", true);
         if (metadata.size()) {
             read (img);
-            ImageIOParameter tmpparam;
-            const ImageIOParameter *p = img->spec(0,0)->find_attribute (metadata, tmpparam);
+            ParamValue tmpparam;
+            const ParamValue *p = img->spec(0,0)->find_attribute (metadata, tmpparam);
             if (p) {
                 std::string val = ImageSpec::metadata_val (*p);
                 if (p->type().basetype == TypeDesc::STRING) {
@@ -927,6 +1038,27 @@ Oiiotool::express_parse_atom(const string_view expr, string_view& s, std::string
                 std::string filename = img->name();
                 std::string ext = Filesystem::extension (img->name());
                 result = filename.substr (0, filename.size()-ext.size());
+            } else if (metadata == "MINCOLOR") {
+                ImageBufAlgo::PixelStats pixstat;
+                ImageBufAlgo::computePixelStats (pixstat, (*img)(0,0));
+                std::stringstream out;
+                for (size_t i = 0; i < pixstat.min.size(); ++i)
+                    out << (i ? "," : "") << pixstat.min[i];
+                result = out.str();
+            } else if (metadata == "MAXCOLOR") {
+                ImageBufAlgo::PixelStats pixstat;
+                ImageBufAlgo::computePixelStats (pixstat, (*img)(0,0));
+                std::stringstream out;
+                for (size_t i = 0; i < pixstat.max.size(); ++i)
+                    out << (i ? "," : "") << pixstat.max[i];
+                result = out.str();
+            } else if (metadata == "AVGCOLOR") {
+                ImageBufAlgo::PixelStats pixstat;
+                ImageBufAlgo::computePixelStats (pixstat, (*img)(0,0));
+                std::stringstream out;
+                for (size_t i = 0; i < pixstat.avg.size(); ++i)
+                    out << (i ? "," : "") << pixstat.avg[i];
+                result = out.str();
             } else {
                 express_error (expr, s, Strutil::format ("unknown attribute name `%s'", metadata));
                 result = orig;
@@ -943,7 +1075,7 @@ Oiiotool::express_parse_atom(const string_view expr, string_view& s, std::string
     else if (Strutil::parse_identifier_if (s, "FRAME_NUMBER_PAD")) {
         std::string fmt = ot.frame_padding == 0 ? std::string("%d")
                                 : Strutil::format ("\"%%0%dd\"", ot.frame_padding);
-        result = Strutil::format (fmt.c_str(), ot.frame_number);
+        result = Strutil::format (fmt, ot.frame_number);
     }
     else {
         express_error (expr, s, "syntax error");
@@ -976,7 +1108,7 @@ Oiiotool::express_parse_factors(const string_view expr, string_view& s, std::str
         return false;
     }
 
-    if (atom.size() >= 2 && atom[0] == '\"' && atom[atom.size()-1] == '\"') {
+    if (atom.size() >= 2 && atom.front() == '\"' && atom.back() == '\"') {
         // Double quoted is string, return it
         result = atom;
     } else if (Strutil::string_is<float> (atom)) {
@@ -1042,7 +1174,7 @@ Oiiotool::express_parse_summands(const string_view expr, string_view& s, std::st
         return false;
     }
 
-    if (atom.size() >= 2 && atom[0] == '\"' && atom[atom.size()-1] == '\"') {
+    if (atom.size() >= 2 && atom.front() == '\"' && atom.back() == '\"') {
         // Double quoted is string, strip it
         result = atom.substr (1, atom.size()-2);
     } else if (Strutil::string_is<float> (atom)) {
@@ -1193,34 +1325,20 @@ set_input_attribute (int argc, const char *argv[])
         return 0;
     }
 
-    // Does it seem to be an int, or did the caller explicitly request
-    // that it be set as an int?
-    char *p = NULL;
-    int i = strtol (value.c_str(), &p, 10);
-    while (*p && isspace(*p))
-        ++p;
-    if ((! *p && type == TypeDesc::UNKNOWN) || type == TypeDesc::INT) {
-        // int conversion succeeded and accounted for the whole string --
-        // so set an int attribute.
-        ot.input_config.attribute (attribname, i);
-        return 0;
+    if (type == TypeInt ||
+        (type == TypeUnknown && Strutil::string_is_int(value))) {
+        // Does it seem to be an int, or did the caller explicitly request
+        // that it be set as an int?
+        ot.input_config.attribute (attribname, Strutil::stoi(value));
+    } else if (type == TypeFloat ||
+        (type == TypeUnknown && Strutil::string_is_float(value))) {
+        // Does it seem to be a float, or did the caller explicitly request
+        // that it be set as a float?
+        ot.input_config.attribute (attribname, Strutil::stof(value));
+    } else {
+        // Otherwise, set it as a string attribute
+        ot.input_config.attribute (attribname, value);
     }
-
-    // Does it seem to be a float, or did the caller explicitly request
-    // that it be set as a float?
-    p = NULL;
-    float f = (float)strtod (value.c_str(), &p);
-    while (*p && isspace(*p))
-        ++p;
-    if ((! *p && type == TypeDesc::UNKNOWN) || type == TypeDesc::FLOAT) {
-        // float conversion succeeded and accounted for the whole string --
-        // so set a float attribute.
-        ot.input_config.attribute (attribname, f);
-        return 0;
-    }
-
-    // Otherwise, set it as a string attribute
-    ot.input_config.attribute (attribname, value);
     return 0;
 }
 
@@ -1264,7 +1382,7 @@ OiioTool::set_attribute (ImageRecRef img, string_view attribname,
         }
         return true;
     }
-    if (type == TypeDesc::TypeTimeCode && value.find(':') != value.npos) {
+    if (type == TypeTimeCode && value.find(':') != value.npos) {
         // Special case: They are specifying a TimeCode as a "HH:MM:SS:FF"
         // string, we need to re-encode as a uint32[2].
         int hour = 0, min = 0, sec = 0, frame = 0;
@@ -1273,6 +1391,25 @@ OiioTool::set_attribute (ImageRecRef img, string_view attribname,
         for (int s = 0, send = img->subimages();  s < send;  ++s) {
             for (int m = 0, mend = img->miplevels(s);  m < mend;  ++m) {
                 ((*img)(s,m).specmod()).attribute (attribname, type, &tc);
+                img->update_spec_from_imagebuf (s, m);
+                if (! allsubimages)
+                    break;
+            }
+            if (! allsubimages)
+                break;
+        }
+        return true;
+    }
+    if (type == TypeRational && value.find('/') != value.npos) {
+        // Special case: They are specifying a rational as "a/b", so we need
+        // to re-encode as a int32[2].
+        int v[2];
+        Strutil::parse_int (value, v[0]);
+        Strutil::parse_char (value, '/');
+        Strutil::parse_int (value, v[1]);
+        for (int s = 0, send = img->subimages();  s < send;  ++s) {
+            for (int m = 0, mend = img->miplevels(s);  m < mend;  ++m) {
+                ((*img)(s,m).specmod()).attribute (attribname, type, v);
                 img->update_spec_from_imagebuf (s, m);
                 if (! allsubimages)
                     break;
@@ -1327,38 +1464,28 @@ OiioTool::set_attribute (ImageRecRef img, string_view attribname,
         return true;
     }
 
-    // Does it seem to be an int, or did the caller explicitly request
-    // that it be set as an int?
-    char *p = NULL;
-    int i = strtol (value.c_str(), &p, 10);
-    while (*p && isspace(*p))
-        ++p;
-    if ((! *p && type == TypeDesc::UNKNOWN) || type == TypeDesc::INT) {
-        // int conversion succeeded and accounted for the whole string --
-        // so set an int attribute.
+    if (type == TypeInt ||
+        (type == TypeUnknown && Strutil::string_is_int(value))) {
+        // Does it seem to be an int, or did the caller explicitly request
+        // that it be set as an int?
+        int v = Strutil::stoi(value);
         return apply_spec_mod (*img, do_set_any_attribute<int>,
-                               std::pair<std::string,int>(attribname,i),
+                               std::pair<std::string,int>(attribname,v),
                                allsubimages);
-    }
-
-    // Does it seem to be a float, or did the caller explicitly request
-    // that it be set as a float?
-    p = NULL;
-    float f = (float)strtod (value.c_str(), &p);
-    while (*p && isspace(*p))
-        ++p;
-    if ((! *p && type == TypeDesc::UNKNOWN) || type == TypeDesc::FLOAT) {
-        // float conversion succeeded and accounted for the whole string --
-        // so set a float attribute.
+    } else if (type == TypeFloat ||
+        (type == TypeUnknown && Strutil::string_is_float(value))) {
+        // Does it seem to be a float, or did the caller explicitly request
+        // that it be set as a float?
+        float v = Strutil::stof(value);
         return apply_spec_mod (*img, do_set_any_attribute<float>,
-                               std::pair<std::string,float>(attribname,f),
+                               std::pair<std::string,float>(attribname,v),
+                               allsubimages);
+    } else {
+        // Otherwise, set it as a string attribute
+        return apply_spec_mod (*img, do_set_any_attribute<std::string>,
+                               std::pair<std::string,std::string>(attribname,value),
                                allsubimages);
     }
-
-    // Otherwise, set it as a string attribute
-    return apply_spec_mod (*img, do_set_any_attribute<std::string>,
-                           std::pair<std::string,std::string>(attribname,value),
-                           allsubimages);
 }
 
 
@@ -1382,7 +1509,7 @@ do_set_keyword (ImageSpec &spec, const std::string &keyword)
     if (! oldkw.empty())
         Strutil::split (oldkw, oldkwlist, ";");
     bool dup = false;
-    BOOST_FOREACH (std::string &ok, oldkwlist) {
+    for (std::string &ok : oldkwlist) {
         ok = Strutil::strip (ok);
         dup |= (ok == keyword);
     }
@@ -1628,6 +1755,9 @@ public:
         : OiiotoolOp (ot, opname, argc, argv, 1) {
             fromspace = args[1];  tospace = args[2];
         }
+    virtual void option_defaults () {
+        options["strict"] = "1";
+    }
     virtual bool setup () {
         if (fromspace == tospace) {
             // The whole thing is a no-op. Get rid of the empty result we
@@ -1642,11 +1772,23 @@ public:
     virtual int impl (ImageBuf **img) {
         string_view contextkey = options["key"];
         string_view contextvalue = options["value"];
-        return ImageBufAlgo::colorconvert (*img[0], *img[1],
-                                           fromspace, tospace, false,
-                                           contextkey, contextvalue,
-                                           &ot.colorconfig);
+        bool strict = Strutil::from_string<int>(options["strict"]);
+        bool ok = ImageBufAlgo::colorconvert (*img[0], *img[1],
+                                              fromspace, tospace, false,
+                                              contextkey, contextvalue,
+                                              &ot.colorconfig);
+        if (!ok && !strict) {
+            // The color transform failed, but we were told not to be
+            // strict, so ignore the error and just copy destination to
+            // source.
+            std::string err = img[0]->geterror();
+            ot.warning (opname(), err);
+            // ok = ImageBufAlgo::copy (*img[0], *img[1], TypeDesc);
+            ok = img[0]->copy (*img[1]);
+        }
+        return ok;
     }
+private:
     string_view fromspace, tospace;
 };
 
@@ -1839,7 +1981,7 @@ set_channelnames (int argc, const char *argv[])
 // newchannelnames will be the name of renamed or non-default-named
 // channels (defaulting to "" if no special name is needed).
 bool
-decode_channel_set (const ImageSpec &spec, string_view chanlist,
+OiioTool::decode_channel_set (const ImageSpec &spec, string_view chanlist,
                     std::vector<std::string> &newchannelnames,
                     std::vector<int> &channels, std::vector<float> &values)
 {
@@ -1985,7 +2127,7 @@ action_channels (int argc, const char *argv[])
             if (! ok)
                 ot.error (command, (*R)(s,m).geterror());
             // Tricky subtlety: IBA::channels changed the underlying IB,
-            // we may need to update the IRR's copy of the spec.
+            // we may need to update the IR's copy of the spec.
             R->update_spec_from_imagebuf(s,m);
         }
     }
@@ -2169,10 +2311,14 @@ action_subimage_append_n (int n, string_view command)
                 bool ok = (*R)(sub,m).copy ((*A)(s,m));
                 if (! ok)
                     ot.error (command, (*R)(sub,m).geterror());
-                // Tricky subtlety: IBA::channels changed the underlying IB,
-                // we may need to update the IRR's copy of the spec.
+                // Update the IR's copy of the spec.
                 R->update_spec_from_imagebuf(sub,m);
             }
+            // For subimage append, preserve the notion of whether the
+            // format is exactly as read from disk -- this is one of the few
+            // operations for which it's true, since we are just appending
+            // subimage, not modifying data or data format.
+            (*R)[sub].was_direct_read ((*A)[s].was_direct_read());
         }
     }
 }
@@ -2312,6 +2458,7 @@ action_diff (int argc, const char *argv[])
     if (ret != DiffErrOK && ret != DiffErrWarn && ret != DiffErrFail)
         ot.error (command);
 
+    ot.printed_info = true; // because taking the diff has output
     ot.function_times[command] += timer();
     return 0;
 }
@@ -2465,6 +2612,32 @@ action_chsum (int argc, const char *argv[])
     ot.function_times[command] += timer();
     return 0;
 }
+
+
+
+class OpColormap : public OiiotoolOp {
+public:
+    OpColormap (Oiiotool &ot, string_view opname, int argc, const char *argv[])
+        : OiiotoolOp (ot, opname, argc, argv, 1) {}
+    virtual int impl (ImageBuf **img) {
+        if (isalpha(args[1][0])) {
+            // Named color map
+            return ImageBufAlgo::color_map (*img[0], *img[1], -1, args[1],
+                                            img[1]->roi(), 0);
+        } else {
+            // Values
+            std::vector<float> knots;
+            int n = Strutil::extract_from_list_string (knots, args[1]);
+            return ImageBufAlgo::color_map (*img[0], *img[1], -1,
+                                            n/3, 3, knots,
+                                            img[1]->roi(), 0);
+        }
+    }
+};
+
+OP_CUSTOMCLASS (colormap, OpColormap, 1);
+
+
 
 
 
@@ -2749,7 +2922,6 @@ action_pattern (int argc, const char *argv[])
         ot.extract_options (options, pattern);
         std::string type = options["type"];
         float A = 0, B = 1;
-        bool ok = true;
         if (type == "gaussian") {
             A = Strutil::from_string<float> (options["mean"]);
             B = Strutil::from_string<float> (options["stddev"]);
@@ -2831,7 +3003,7 @@ action_crop (int argc, const char *argv[])
     string_view size    = ot.express (argv[1]);
 
     std::map<std::string,std::string> options;
-    options["allsubimages"] = Strutil::format("%d",ot.allsubimages);
+    options["allsubimages"] = std::to_string(ot.allsubimages);
     ot.extract_options (options, command);
     int crop_all_subimages = Strutil::from_string<int>(options["allsubimages"]);
 
@@ -3002,6 +3174,9 @@ public:
     OpResample (Oiiotool &ot, string_view opname, int argc, const char *argv[])
         : OiiotoolOp (ot, opname, argc, argv, 1) { }
     virtual int compute_subimages () { return 1; } // just the first one
+    virtual void option_defaults () {
+        options["interp"] = "1";
+    }
     virtual bool setup () {
         // The size argument will be the resulting display (full) window.
         const ImageSpec &Aspec (*ir[1]->spec(0,0));
@@ -3027,7 +3202,8 @@ public:
         return true;
     }
     virtual int impl (ImageBuf **img) {
-        return ImageBufAlgo::resample (*img[0], *img[1]);
+        bool interp = (bool) Strutil::from_string<int>(options["interp"]);
+        return ImageBufAlgo::resample (*img[0], *img[1], interp);
     }
 };
 
@@ -3109,24 +3285,34 @@ action_fit (int argc, const char *argv[])
                         fit_full_x, fit_full_y, size.c_str(), false);
 
     std::map<std::string,std::string> options;
+    options["wrap"] = "black";
+    options["allsubimages"] = std::to_string(ot.allsubimages);
     ot.extract_options (options, command);
-    string_view padopt = options["pad"];
-    bool pad = padopt.size() && atoi(padopt.c_str());
+    bool pad = Strutil::from_string<int>(options["pad"]);
     string_view filtername = options["filter"];
-    
+    bool exact = Strutil::from_string<int>(options["exact"]);
+    ImageBuf::WrapMode wrap = ImageBuf::WrapMode_from_string (options["wrap"]);
+    bool allsubimages = Strutil::from_string<int>(options["allsubimages"]);
+
     // Compute scaling factors and use action_resize to do the heavy lifting
     float oldaspect = float(Aspec->full_width) / Aspec->full_height;
     float newaspect = float(fit_full_width) / fit_full_height;
     int resize_full_width = fit_full_width;
     int resize_full_height = fit_full_height;
     int xoffset = 0, yoffset = 0;
+    float xoff = 0.0f, yoff = 0.0f;
+    float scale = 1.0f;
 
     if (newaspect >= oldaspect) {  // same or wider than original
         resize_full_width = int(resize_full_height * oldaspect + 0.5f);
         xoffset = (fit_full_width - resize_full_width) / 2;
+        scale = float(fit_full_height) / float(Aspec->full_height);
+        xoff = float(fit_full_width - scale * Aspec->full_width) / 2.0f;
     } else {  // narrower than original
         resize_full_height = int(resize_full_width / oldaspect + 0.5f);
         yoffset = (fit_full_height - resize_full_height) / 2;
+        scale = float(fit_full_width) / float(Aspec->full_width);
+        yoff = float(fit_full_height - scale * Aspec->full_height) / 2.0f;
     }
 
     if (ot.debug) {
@@ -3135,36 +3321,69 @@ action_fit (int argc, const char *argv[])
                                        Aspec->full_x, Aspec->full_y)
                   << " into "
                   << format_resolution(fit_full_width, fit_full_height,
-                                       fit_full_x, fit_full_y) 
-                  << "\n";
-    }
-    if (resize_full_width != Aspec->full_width ||
-        resize_full_height != Aspec->full_height ||
-        fit_full_x != Aspec->full_x || fit_full_y != Aspec->full_y) {
-        std::string resize = format_resolution (resize_full_width,
-                                                resize_full_height,
-                                                0, 0);
-        if (ot.debug)
-            std::cout << "    Resizing to " << resize << "\n";
-        std::string command = "resize";
-        if (filtername.size())
-            command += Strutil::format (":filter=%s", filtername);
-        const char *newargv[2] = { command.c_str(), resize.c_str() };
-        action_resize (2, newargv);
-        A = ot.top ();
-        Aspec = A->spec(0,0);
-        // Now A,Aspec are for the NEW resized top of stack
-    } else {
-        if (ot.debug)
-            std::cout << "   no need to do a resize\n";
+                                       fit_full_x, fit_full_y) << "\n";
+        std::cout << "  Fit scale factor " << scale << "\n";
     }
 
-    A->spec(0,0)->full_width = (*A)(0,0).specmod().full_width = fit_full_width;
-    A->spec(0,0)->full_height = (*A)(0,0).specmod().full_height = fit_full_height;
-    A->spec(0,0)->full_x = (*A)(0,0).specmod().full_x = fit_full_x;
-    A->spec(0,0)->full_y = (*A)(0,0).specmod().full_y = fit_full_y;
-    A->spec(0,0)->x = (*A)(0,0).specmod().x = xoffset;
-    A->spec(0,0)->y = (*A)(0,0).specmod().y = yoffset;
+    if (exact) {
+        // Full partial-pixel filtered resize -- exactly preserves aspect
+        // ratio and exactly centers the padded image, but might make the
+        // edges of the resized area blurry because it's not a whole number
+        // of pixels.
+        Imath::M33f M (scale, 0.0f,  0.0f,
+                       0.0f,  scale, 0.0f,
+                       xoff,  yoff,  1.0f);
+        if (ot.debug)
+            std::cout << "   Fit performing warp with " << M << "\n";
+        int subimages = allsubimages ? A->subimages() : 1;
+        ImageRecRef R (new ImageRec (A->name(), subimages));
+        for (int s = 0; s < subimages; ++s) {
+            ImageSpec newspec = (*A)(s,0).spec();
+            newspec.width = newspec.full_width = fit_full_width;
+            newspec.height = newspec.full_height = fit_full_height;
+            newspec.x = newspec.full_x = fit_full_x;
+            newspec.y = newspec.full_y = fit_full_y;
+            (*R)(s,0).reset (newspec);
+            ImageBufAlgo::warp ((*R)(s,0), (*A)(s,0), M, filtername, 0.0f,
+                                false, wrap);
+            R->update_spec_from_imagebuf (s, 0);
+        }
+        ot.pop();
+        ot.push (R);
+        A = ot.top ();
+        Aspec = A->spec(0,0);
+    } else {
+        // Full pixel resize -- gives the sharpest result, but for odd-sized
+        // destination resolution, may not be exactly centered and will only
+        // preserve the aspect ratio to the nearest integer pixel size.
+        if (resize_full_width != Aspec->full_width ||
+            resize_full_height != Aspec->full_height ||
+            fit_full_x != Aspec->full_x || fit_full_y != Aspec->full_y) {
+            std::string resize = format_resolution (resize_full_width,
+                                                    resize_full_height,
+                                                    0, 0);
+            if (ot.debug)
+                std::cout << "    Resizing to " << resize << "\n";
+            std::string command = "resize";
+            if (filtername.size())
+                command += Strutil::format (":filter=%s", filtername);
+            command += Strutil::format (":allsubimages=%d", allsubimages);
+            const char *newargv[2] = { command.c_str(), resize.c_str() };
+            action_resize (2, newargv);
+            A = ot.top ();
+            Aspec = A->spec(0,0);
+            // Now A,Aspec are for the NEW resized top of stack
+        } else {
+            if (ot.debug)
+                std::cout << "   no need to do a resize\n";
+        }
+        A->spec(0,0)->full_width = (*A)(0,0).specmod().full_width = fit_full_width;
+        A->spec(0,0)->full_height = (*A)(0,0).specmod().full_height = fit_full_height;
+        A->spec(0,0)->full_x = (*A)(0,0).specmod().full_x = fit_full_x;
+        A->spec(0,0)->full_y = (*A)(0,0).specmod().full_y = fit_full_y;
+        A->spec(0,0)->x = (*A)(0,0).specmod().x = xoffset;
+        A->spec(0,0)->y = (*A)(0,0).specmod().y = yoffset;
+    }
 
     if (pad && (fit_full_width != Aspec->width ||
                 fit_full_height != Aspec->height)) {
@@ -3255,7 +3474,6 @@ action_pixelaspect (int argc, const char *argv[])
         const char *newargv[2] = { command.c_str(), resize.c_str() };
         action_resize (2, newargv);
         A = ot.top ();
-        Aspec = A->spec(0,0);
         A->spec(0,0)->full_width = (*A)(0,0).specmod().full_width = scale_full_width;
         A->spec(0,0)->full_height = (*A)(0,0).specmod().full_height = scale_full_height;
         A->spec(0,0)->attribute ("PixelAspectRatio", new_paspect);
@@ -3547,7 +3765,7 @@ action_mosaic (int argc, const char *argv[])
     std::map<std::string,std::string> options;
     options["pad"] = "0";
     ot.extract_options (options, command);
-    int pad = strtol (options["pad"].c_str(), NULL, 10);
+    int pad = Strutil::stoi (options["pad"]);
 
     ImageSpec Rspec (ximages*widest + (ximages-1)*pad,
                      yimages*highest + (yimages-1)*pad,
@@ -3649,6 +3867,19 @@ public:
 };
 
 OP_CUSTOMCLASS (deepmerge, OpDeepMerge, 2);
+
+
+
+class OpDeepHoldout : public OiiotoolOp {
+public:
+    OpDeepHoldout (Oiiotool &ot, string_view opname, int argc, const char *argv[])
+        : OiiotoolOp (ot, opname, argc, argv, 2) {}
+    virtual int impl (ImageBuf **img) {
+        return ImageBufAlgo::deep_holdout (*img[0], *img[1], *img[2]);
+    }
+};
+
+OP_CUSTOMCLASS (deepholdout, OpDeepHoldout, 2);
 
 
 
@@ -3761,7 +3992,7 @@ action_clamp (int argc, const char *argv[])
         ot.extract_options (options, command);
         Strutil::extract_from_list_string (min, options["min"]);
         Strutil::extract_from_list_string (max, options["max"]);
-        bool clampalpha01 = strtol (options["clampalpha"].c_str(), NULL, 10) != 0;
+        bool clampalpha01 = Strutil::stoi (options["clampalpha"]);
 
         for (int m = 0, miplevels=R->miplevels(s);  m < miplevels;  ++m) {
             ImageBuf &Rib ((*R)(s,m));
@@ -3873,8 +4104,24 @@ public:
         std::string font = options["font"];
         std::vector<float> textcolor (Rspec.nchannels+1, 1.0f);
         Strutil::extract_from_list_string (textcolor, options["color"]);
+        std::string ax = options["xalign"];
+        std::string ay = options["yalign"];
+        TextAlignX alignx (TextAlignX::Left);
+        TextAlignY aligny (TextAlignY::Baseline);
+        if (Strutil::iequals(ax, "right") || Strutil::iequals(ax, "r"))
+            alignx = TextAlignX::Right;
+        if (Strutil::iequals(ax, "center") || Strutil::iequals(ax, "c"))
+            alignx = TextAlignX::Center;
+        if (Strutil::iequals(ay, "top") || Strutil::iequals(ay, "t"))
+            aligny = TextAlignY::Top;
+        if (Strutil::iequals(ay, "bottom") || Strutil::iequals(ay, "b"))
+            aligny = TextAlignY::Bottom;
+        if (Strutil::iequals(ay, "center") || Strutil::iequals(ay, "c"))
+            aligny = TextAlignY::Center;
+        int shadow = Strutil::from_string<int>(options["shadow"]);
         return ImageBufAlgo::render_text (*img[0], x, y, args[1],
-                                          fontsize, font, &textcolor[0]);
+                                          fontsize, font, textcolor,
+                                          alignx, aligny, shadow);
     }
 };
 
@@ -3980,8 +4227,12 @@ input_file (int argc, const char *argv[])
     int printinfo = get_value_override (fileoptions["info"], int(ot.printinfo));
     bool readnow = get_value_override (fileoptions["now"], int(0));
     bool autocc = get_value_override (fileoptions["autocc"], int(ot.autocc));
+    std::string infoformat = get_value_override (fileoptions["infoformat"],
+                                                 ot.printinfo_format);
+    TypeDesc input_dataformat (fileoptions["type"]);
+    std::string channel_set = fileoptions["ch"];
 
-    for (int i = 0;  i < argc;  i++) {
+    for (int i = 0;  i < argc;  i++) { // FIXME: this loop is pointless
         string_view filename = ot.express(argv[i]);
         std::map<std::string,ImageRecRef>::const_iterator found;
         found = ot.image_labels.find(filename);
@@ -3994,7 +4245,6 @@ input_file (int argc, const char *argv[])
         }
         Timer timer (ot.enable_function_timing);
         int exists = 1;
-        // ustring filename (argv[i]);
         if (ot.input_config_set) {
             // User has set some input configuration, so seed the cache with
             // that information.
@@ -4008,7 +4258,7 @@ input_file (int argc, const char *argv[])
             }
         }
         if (! ot.imagecache->get_image_info (ustring(filename), 0, 0,
-                            ustring("exists"), TypeDesc::TypeInt, &exists)
+                            ustring("exists"), TypeInt, &exists)
             || !exists) {
             // Try to get a more precise error message to report
             ImageInput *input = ImageInput::create (filename);
@@ -4030,28 +4280,51 @@ input_file (int argc, const char *argv[])
             }
             exit (1);
         }
+
+        if (channel_set.size()) {
+            ot.input_channel_set = channel_set;
+            readnow = true;
+        }
+
         if (ot.debug || ot.verbose)
             std::cout << "Reading " << filename << "\n";
         ot.push (ImageRecRef (new ImageRec (filename, ot.imagecache)));
         ot.curimg->configspec (ot.input_config);
+        ot.curimg->input_dataformat (input_dataformat);
         if (readnow) {
-            ot.curimg->read (ReadNoCache);
+            ot.curimg->read (ReadNoCache, channel_set);
+            // If we do not yet have an expected output format, set it based on
+            // this image (presumably the first one read.
+            if (ot.output_dataformat == TypeDesc::UNKNOWN) {
+                const ImageSpec &nspec ((*ot.curimg)(0,0).nativespec());
+                ot.output_dataformat = nspec.format;
+                if (! ot.output_bitspersample)
+                    ot.output_bitspersample = nspec.get_int_attribute ("oiio:BitsPerSample");
+                if (nspec.channelformats.size()) {
+                    for (int c = 0; c < nspec.nchannels; ++c) {
+                        std::string chname = nspec.channelnames[c];
+                        ot.output_channelformats[chname] = std::string(nspec.channelformat(c).c_str());
+                    }
+                }
+            }
         }
         if (printinfo || ot.printstats || ot.dumpdata || ot.hash) {
             OiioTool::print_info_options pio;
-            pio.verbose = ot.verbose || printinfo > 1;
-            pio.subimages = ot.allsubimages;
+            pio.verbose = ot.verbose || printinfo > 1 || ot.printinfo_verbose;
+            pio.subimages = ot.allsubimages || printinfo > 1;
             pio.compute_stats = ot.printstats;
             pio.dumpdata = ot.dumpdata;
             pio.dumpdata_showempty = ot.dumpdata_showempty;
             pio.compute_sha1 = ot.hash;
             pio.metamatch = ot.printinfo_metamatch;
             pio.nometamatch = ot.printinfo_nometamatch;
+            pio.infoformat = infoformat;
             long long totalsize = 0;
             std::string error;
             bool ok = OiioTool::print_info (ot, filename, pio, totalsize, error);
             if (! ok)
                 ot.error ("read", error);
+            ot.printed_info = true;
         }
         ot.function_times["input"] += timer();
         if (ot.autoorient) {
@@ -4077,7 +4350,7 @@ input_file (int argc, const char *argv[])
             if (linearspace.empty())
                 linearspace = string_view("Linear");
             if (colorspace.size() && !Strutil::iequals(colorspace,linearspace)) {
-                const char *argv[] = { "colorconvert", colorspace.c_str(),
+                const char *argv[] = { "colorconvert:strict=0", colorspace.c_str(),
                                        linearspace.c_str() };
                 if (ot.debug)
                     std::cout << "  Converting " << filename << " from "
@@ -4093,6 +4366,7 @@ input_file (int argc, const char *argv[])
         ot.input_config = ImageSpec();
         ot.input_config_set = false;
     }
+    ot.input_channel_set.clear ();
     ot.check_peak_memory ();
     ot.total_readtime.stop();
     return 0;
@@ -4200,8 +4474,8 @@ output_file (int argc, const char *argv[])
         const char *new_argv[2];
         // Git rid of the ":all=" part of the command so we don't infinitely
         // recurse.
-        std::string newcmd = boost::regex_replace (command.str(),
-                                                   boost::regex(":all=[0-9]+"), "");
+        std::string newcmd = regex_replace (command.str(),
+                                                   regex(":all=[0-9]+"), "");
         new_argv[0] = newcmd.c_str();;
         ImageRecRef saved_curimg = ot.curimg; // because we'll overwrite it
         for (int i = 0; i < nimages; ++i) {
@@ -4224,7 +4498,7 @@ output_file (int argc, const char *argv[])
     string_view formatname = fileoptions["fileformatname"];
     if (formatname.empty())
         formatname = filename;
-    ImageOutput *out = ImageOutput::create (formatname);
+    std::unique_ptr<ImageOutput> out (ImageOutput::create (formatname));
     if (! out) {
         std::string err = OIIO::geterror();
         ot.error (command, err.size() ? err.c_str() : "unknown error creating an ImageOutput");
@@ -4335,7 +4609,8 @@ output_file (int argc, const char *argv[])
             if (ot.debug)
                 std::cout << "  Converting from " << currentspace << " to "
                           << outcolorspace << " for output to " << filename << "\n";
-            const char *argv[] = { "colorconvert", currentspace.c_str(), outcolorspace.c_str() };
+            const char *argv[] = { "colorconvert:strict=0",
+                                   currentspace.c_str(), outcolorspace.c_str() };
             action_colorconvert (3, argv);
             ir = ot.curimg;
         }
@@ -4377,7 +4652,8 @@ output_file (int argc, const char *argv[])
     bool ok = true;
     if (do_tex || do_latlong) {
         ImageSpec configspec;
-        adjust_output_options (filename, configspec, ot, supports_tiles, fileoptions);
+        adjust_output_options (filename, configspec, nullptr,
+                               ot, supports_tiles, fileoptions);
         prep_texture_config (configspec, fileoptions);
         ImageBufAlgo::MakeTextureMode mode = ImageBufAlgo::MakeTxTexture;
         if (do_shad)
@@ -4390,13 +4666,17 @@ output_file (int argc, const char *argv[])
                                          configspec, &std::cout);
         if (!ok)
             ot.error (command, "Could not make texture");
-
+        // N.B. make_texture already internally writes to a temp file and
+        // then atomically moves it to the final destination, so we don't
+        // need to explicitly do that here.
     } else {
         // Non-texture case
         std::vector<ImageSpec> subimagespecs (ir->subimages());
         for (int s = 0;  s < ir->subimages();  ++s) {
             ImageSpec spec = *ir->spec(s,0);
-            adjust_output_options (filename, spec, ot, supports_tiles, fileoptions);
+            adjust_output_options (filename, spec, ir->nativespec(s),
+                                   ot, supports_tiles,
+                                   fileoptions, (*ir)[s].was_direct_read());
             // For deep files, must copy the native deep channelformats
             if (spec.deep)
                 spec.channelformats = (*ir)(s,0).nativespec().channelformats;
@@ -4406,16 +4686,29 @@ output_file (int argc, const char *argv[])
             subimagespecs[s] = spec;
         }
 
+        // Write the output to a temp file first, then rename it to the
+        // final destination (same directory). This improves robustness.
+        // There is less chance a crash during execution will leave behind a
+        // partially formed file, and it also protects us against corrupting
+        // an input if they are "oiiotooling in place" (especially
+        // problematic for large files that are ImageCache-based and so only
+        // partially read at the point that we open the file. We also force
+        // a unique filename to protect against multiple processes running
+        // at the same time on the same file.
+        std::string extension = Filesystem::extension(filename);
+        std::string tmpfilename = Filesystem::replace_extension (filename, ".%%%%%%%%.temp"+extension);
+        tmpfilename = Filesystem::unique_path(tmpfilename);
+
         // Do the initial open
         ImageOutput::OpenMode mode = ImageOutput::Create;
         if (ir->subimages() > 1 && out->supports("multiimage")) {
-            if (! out->open (filename, ir->subimages(), &subimagespecs[0])) {
+            if (! out->open (tmpfilename, ir->subimages(), &subimagespecs[0])) {
                 std::string err = out->geterror();
                 ot.error (command, err.size() ? err.c_str() : "unknown error");
                 return 0;
             }
         } else {
-            if (! out->open (filename, subimagespecs[0], mode)) {
+            if (! out->open (tmpfilename, subimagespecs[0], mode)) {
                 std::string err = out->geterror();
                 ot.error (command, err.size() ? err.c_str() : "unknown error");
                 return 0;
@@ -4426,16 +4719,18 @@ output_file (int argc, const char *argv[])
         for (int s = 0, send = ir->subimages();  s < send;  ++s) {
             for (int m = 0, mend = ir->miplevels(s);  m < mend && ok;  ++m) {
                 ImageSpec spec = *ir->spec(s,m);
-                adjust_output_options (filename, spec, ot, supports_tiles, fileoptions);
+                adjust_output_options (filename, spec, ir->nativespec(s,m),
+                                       ot, supports_tiles,
+                                       fileoptions, (*ir)[s].was_direct_read());
                 if (s > 0 || m > 0) {  // already opened first subimage/level
-                    if (! out->open (filename, spec, mode)) {
+                    if (! out->open (tmpfilename, spec, mode)) {
                         std::string err = out->geterror();
                         ot.error (command, err.size() ? err.c_str() : "unknown error");
                         ok = false;
                         break;
                     }
                 }
-                if (! (*ir)(s,m).write (out)) {
+                if (! (*ir)(s,m).write (out.get())) {
                     ot.error (command, (*ir)(s,m).geterror());
                     ok = false;
                     break;
@@ -4462,9 +4757,24 @@ output_file (int argc, const char *argv[])
         }
 
         out->close ();
+        out.reset ();    // make extra sure it's cleaned up
+
+        // We wrote to a temporary file, so now atomically move it to the
+        // original desired location.
+        if (ok) {
+            std::string err;
+            ok = Filesystem::rename (tmpfilename, filename, err);
+            if (! ok)
+                ot.error (command, Strutil::format("oiiotool ERROR: could not move temp file %s to %s: %s",
+                                                   tmpfilename, filename, err));
+        }
+        if (! ok)
+            Filesystem::remove (tmpfilename);
     }
 
-    delete out;
+    // Make sure to invalidate any IC entries that think they are the
+    // file we just wrote.
+    ot.imagecache->invalidate (ustring(filename));
 
     if (ot.output_adjust_time && ok) {
         std::string metadatatime = ir->spec(0,0)->get_string_attribute ("DateTime");
@@ -4480,8 +4790,15 @@ output_file (int argc, const char *argv[])
     ot.output_bitspersample = saved_bitspersample;
     ot.curimg->was_output (true);
     ot.total_writetime.stop();
-    ot.function_times[command] += timer();
+    double optime = timer();
+    ot.function_times[command] += optime;
     ot.num_outputs += 1;
+
+    if (ot.debug)
+        Strutil::printf ("    output took %s  (total time %s, mem %s)\n",
+                         Strutil::timeintervalformat(optime,2),
+                         Strutil::timeintervalformat(ot.total_runtime(),2),
+                         Strutil::memformat(Sysutil::memory_used()));
     return 0;
 }
 
@@ -4503,7 +4820,7 @@ do_echo (int argc, const char *argv[])
     std::cout << message;
     for (int i = 0; i < newline; ++i)
         std::cout << '\n';
-    // ot.printed_info = true;
+    ot.printed_info = true;
     return 0;
 }
 
@@ -4518,12 +4835,12 @@ command_line_string (int argc, char * argv[], bool sansattrib)
     for (int i = 0;  i < argc;  ++i) {
         if (sansattrib) {
             // skip any filtered attributes
-            if (!strcmp(argv[i], "--attrib") || !strcmp(argv[i], "-attrib") ||
-                !strcmp(argv[i], "--sattrib") || !strcmp(argv[i], "-sattrib")) {
+            if (Strutil::starts_with(argv[i], "--attrib") || Strutil::starts_with(argv[i], "-attrib") ||
+                Strutil::starts_with(argv[i], "--sattrib") || Strutil::starts_with(argv[i], "-sattrib")) {
                 i += 2;  // also skip the following arguments
                 continue;
             }
-            if (!strcmp(argv[i], "--sansattrib") || !strcmp(argv[i], "-sansattrib")) {
+            if (Strutil::starts_with(argv[i], "--sansattrib") || Strutil::starts_with(argv[i], "-sansattrib")) {
                 continue;
             }
         }
@@ -4542,6 +4859,24 @@ command_line_string (int argc, char * argv[], bool sansattrib)
 
 
 
+static std::string
+formatted_format_list (string_view format_typename, string_view attr)
+{
+    int columns = Sysutil::terminal_columns() - 2;
+    std::stringstream s;
+    s << format_typename << " formats supported: ";
+    std::string format_list;
+    OIIO::getattribute (attr, format_list);
+    std::vector<string_view> formats;
+    Strutil::split (format_list, formats, ",");
+    std::sort (formats.begin(), formats.end());
+    format_list = Strutil::join (formats, ", ");
+    s << format_list;
+    return Strutil::wordwrap(s.str(), columns, 4);
+}
+
+
+
 static void
 print_help (ArgParse &ap)
 {
@@ -4549,18 +4884,8 @@ print_help (ArgParse &ap)
     std::cout << "\n";
     int columns = Sysutil::terminal_columns() - 2;
 
-    {
-        std::stringstream s;
-        s << "Image formats supported: ";
-        std::string format_list;
-        OIIO::getattribute ("format_list", format_list);
-        std::vector<string_view> formats;
-        Strutil::split (format_list, formats, ",");
-        std::sort (formats.begin(), formats.end());
-        format_list = Strutil::join (formats, ", ");
-        s << format_list;
-        std::cout << Strutil::wordwrap(s.str(), columns, 4) << "\n";
-    }
+    std::cout << formatted_format_list ("Input", "input_format_list") << "\n";
+    std::cout << formatted_format_list ("Output", "output_format_list") << "\n";
 
     // debugging color space names
     std::stringstream s;
@@ -4626,9 +4951,9 @@ print_help (ArgParse &ap)
     if (libs.size()) {
         std::vector<string_view> libvec;
         Strutil::split (libs, libvec, ";");
-        for (size_t i = 0; i < libvec.size(); ++i) {
-            size_t pos = libvec[i].find(':');
-            libvec[i].remove_prefix (pos+1);
+        for (auto& lib : libvec) {
+            size_t pos = lib.find(':');
+            lib.remove_prefix (pos+1);
         }
         std::cout << "Dependent libraries:\n    "
                   << Strutil::wordwrap(Strutil::join (libvec, ", "), columns, 4)
@@ -4662,7 +4987,7 @@ getargs (int argc, char *argv[])
                 "-a", &ot.allsubimages, "Do operations on all subimages/miplevels",
                 "--debug", &ot.debug, "Debug mode",
                 "--runstats", &ot.runstats, "Print runtime statistics",
-                "--info", &ot.printinfo, "Print resolution and metadata on all inputs",
+                "--info %@", set_printinfo, NULL, "Print resolution and basic info on all inputs, detailed metadata if -v is also used (options: format=xml:verbose=1)",
                 "--echo %@ %s", do_echo, NULL, "Echo message to console (options: newline=0)",
                 "--metamatch %s", &ot.printinfo_metamatch,
                     "Regex: which metadata is printed with -info -v",
@@ -4694,7 +5019,7 @@ getargs (int argc, char *argv[])
                 "--cache %@ %d", set_cachesize, &ot.cachesize, "ImageCache size (in MB: default=4096)",
                 "--autotile %@ %d", set_autotile, &ot.autotile, "Autotile size for cached images (default=4096)",
                 "<SEPARATOR>", "Commands that read images:",
-                "-i %@ %s", input_file, NULL, "Input file (argument: filename) (options: now=0:printinfo=0:autocc=0)",
+                "-i %@ %s", input_file, NULL, "Input file (argument: filename) (options: now=, printinfo=, autocc=, type=, ch=)",
                 "--iconfig %@ %s %s", set_input_attribute, NULL, NULL, "Sets input config attribute (name, value) (options: type=...)",
                 "<SEPARATOR>", "Commands that write images:",
                 "-o %@ %s", output_file, NULL, "Output the current image to the named file",
@@ -4723,6 +5048,7 @@ getargs (int argc, char *argv[])
                 "<SEPARATOR>", "Options that change current image metadata (but not pixel values):",
                 "--attrib %@ %s %s", set_any_attribute, NULL, NULL, "Sets metadata attribute (name, value) (options: type=...)",
                 "--sattrib %@ %s %s", set_string_attribute, NULL, NULL, "Sets string metadata attribute (name, value)",
+                "--eraseattrib %@ %s", erase_attribute, NULL, "Erase attributes matching regex",
                 "--caption %@ %s", set_caption, NULL, "Sets caption (ImageDescription metadata)",
                 "--keyword %@ %s", set_keyword, NULL, "Add a keyword",
                 "--clear-keywords %@", clear_keywords, NULL, "Clear all keywords",
@@ -4780,6 +5106,7 @@ getargs (int argc, char *argv[])
                 "--noise %@", action_noise, NULL, "Add noise to an image (options: type=gaussian:mean=0:stddev=0.1, type=uniform:min=0:max=0.1, type=salt:value=0:portion=0.1, seed=0",
                 "--chsum %@", action_chsum, NULL,
                     "Turn into 1-channel image by summing channels (options: weight=r,g,...)",
+                "--colormap %s %@", action_colormap, NULL, "Color map based on channel 0 (arg: \"blue-red\", \"spectrum\", \"heat\", or comma-separated list of RGB triples)",
                 "--crop %@ %s", action_crop, NULL, "Set pixel data resolution and offset, cropping or padding if necessary (WxH+X+Y or xmin,ymin,xmax,ymax)",
                 "--croptofull %@", action_croptofull, NULL, "Crop or pad to make pixel data region match the \"full\" region",
                 "--trim %@", action_trim, NULL, "Crop to the minimal ROI containing nonzero pixel values",
@@ -4790,6 +5117,7 @@ getargs (int argc, char *argv[])
                 "--over %@", action_over, NULL, "'Over' composite of two images",
                 "--zover %@", action_zover, NULL, "Depth composite two images with Z channels (options: zeroisinf=%d)",
                 "--deepmerge %@", action_deepmerge, NULL, "Merge/composite two deep images",
+                "--deepholdout %@", action_deepholdout, NULL, "Hold out one deep image by another",
                 "--histogram %@ %s %d", action_histogram, NULL, NULL, "Histogram one channel (options: cumulative=0)",
                 "--rotate90 %@", action_rotate90, NULL, "Rotate the image 90 degrees clockwise",
                 "--rotate180 %@", action_rotate180, NULL, "Rotate the image 180 degrees",
@@ -4800,9 +5128,9 @@ getargs (int argc, char *argv[])
                 "--reorient %@", action_reorient, NULL, "Rotate and/or flop the image to transform the pixels to match the Orientation metadata",
                 "--transpose %@", action_transpose, NULL, "Transpose the image",
                 "--cshift %@ %s", action_cshift, NULL, "Circular shift the image (e.g.: +20-10)",
-                "--resample %@ %s", action_resample, NULL, "Resample (640x480, 50%)",
+                "--resample %@ %s", action_resample, NULL, "Resample (640x480, 50%) (options: interp=0)",
                 "--resize %@ %s", action_resize, NULL, "Resize (640x480, 50%) (options: filter=%s)",
-                "--fit %@ %s", action_fit, NULL, "Resize to fit within a window size (options: filter=%s, pad=%d)",
+                "--fit %@ %s", action_fit, NULL, "Resize to fit within a window size (options: filter=%s, pad=%d, exact=%d)",
                 "--pixelaspect %@ %g", action_pixelaspect, NULL, "Scale up the image's width or height to match the given pixel aspect ratio (options: filter=%s)",
                 "--rotate %@ %g", action_rotate, NULL, "Rotate pixels (argument is degrees clockwise) around the center of the display window (options: filter=%s, center=%f,%f, recompute_roi=%d",
                 "--warp %@ %s", action_warp, NULL, "Warp pixels (argument is a 3x3 matrix, separated by commas) (options: filter=%s, recompute_roi=%d)",
@@ -4896,6 +5224,9 @@ getargs (int argc, char *argv[])
     if (ap.parse(argc, (const char**)argv) < 0) {
         std::cerr << ap.geterror() << std::endl;
         print_help (ap);
+        // Repeat the command line, so if oiiotool is being called from a
+        // script, it's easy to debug how the command was mangled.
+        std::cerr << "\nFull command line was:\n> " << ot.full_command_line << "\n";
         exit (EXIT_FAILURE);
     }
     if (help) {
@@ -4917,8 +5248,6 @@ getargs (int argc, char *argv[])
 static bool 
 handle_sequence (int argc, const char **argv)
 {
-    Timer totaltime;
-
     // First, scan the original command line arguments for '#', '@', '%0Nd',
     // '%v' or '%V' characters.  Any found indicate that there are numeric
     // range or wildcards to deal with.  Also look for --frames,
@@ -4927,7 +5256,7 @@ handle_sequence (int argc, const char **argv)
 #define MANYRANGE_SPEC ONERANGE_SPEC "(," ONERANGE_SPEC ")*"
 #define VIEW_SPEC "%[Vv]"
 #define SEQUENCE_SPEC "((" MANYRANGE_SPEC ")?" "((#|@)+|(%[0-9]*d)))" "|" "(" VIEW_SPEC ")"
-    static boost::regex sequence_re (SEQUENCE_SPEC);
+    static regex sequence_re (SEQUENCE_SPEC);
     std::string framespec = "";
 
     static const char *default_views = "left,right";
@@ -4952,7 +5281,7 @@ handle_sequence (int argc, const char **argv)
             a++;
         }
         std::string strarg (argv[a]);
-        boost::match_results<std::string::const_iterator> range_match;
+        match_results<std::string::const_iterator> range_match;
         if (strarg == "--debug" || strarg == "-debug")
             ot.debug = true;
         else if ((strarg == "--frames" || strarg == "-frames") && a < argc-1) {
@@ -4974,7 +5303,7 @@ handle_sequence (int argc, const char **argv)
             wildcard_on = true;
         }
         else if (wildcard_on && !is_output_all &&
-                 boost::regex_search (strarg, range_match, sequence_re)) {
+                 regex_search (strarg, range_match, sequence_re)) {
             is_sequence = true;
             sequence_args.push_back (a);
             sequence_is_output.push_back (is_output);
@@ -5056,8 +5385,7 @@ handle_sequence (int argc, const char **argv)
     for (size_t i = 0;  i < nfilenames;  ++i) {
         if (ot.debug)
             std::cout << "SEQUENCE " << i << "\n";
-        for (size_t j = 0;  j < sequence_args.size();  ++j) {
-            size_t a = sequence_args[j];
+        for (size_t a : sequence_args) {
             seq_argv[a] = filenames[a][i].c_str();
             if (ot.debug)
                 std::cout << "  " << argv[a] << " -> " << seq_argv[a] << "\n";
@@ -5076,7 +5404,7 @@ handle_sequence (int argc, const char **argv)
 
         if (ot.runstats)
             std::cout << "End iteration " << i << ": "
-                    << Strutil::timeintervalformat(totaltime(),2) << "  "
+                    << Strutil::timeintervalformat(ot.total_runtime(),2) << "  "
                     << Strutil::memformat(Sysutil::memory_used()) << "\n";
         if (ot.debug)
             std::cout << "\n";
@@ -5097,15 +5425,16 @@ main (int argc, char *argv[])
     _set_output_format (_TWO_DIGIT_EXPONENT);
 #endif
 
-    Timer totaltime;
+    // Globally force classic "C" locale, and turn off all formatting
+    // internationalization, for the entire oiiotool application.
+    std::locale::global (std::locale::classic());
 
     ot.imagecache = ImageCache::create (false);
     ASSERT (ot.imagecache);
     ot.imagecache->attribute ("forcefloat", 1);
     ot.imagecache->attribute ("max_memory_MB", float(ot.cachesize));
     ot.imagecache->attribute ("autotile", ot.autotile);
-    if (ot.autotile)
-        ot.imagecache->attribute ("autoscanline", 1);
+    ot.imagecache->attribute ("autoscanline", int(ot.autotile ? 1 : 0));
 
     Filesystem::convert_native_arguments (argc, (const char **)argv);
     if (handle_sequence (argc, (const char **)argv)) {
@@ -5119,7 +5448,7 @@ main (int argc, char *argv[])
             ot.warning (Strutil::format ("pending '%s' command never executed", ot.pending_callback_name()));
     }
 
-    if (!ot.printinfo && !ot.printstats && !ot.dumpdata && !ot.dryrun) {
+    if (!ot.printinfo && !ot.printstats && !ot.dumpdata && !ot.dryrun && !ot.printed_info) {
         if (ot.curimg && !ot.curimg->was_output() &&
             (ot.curimg->metadata_modified() || ot.curimg->pixels_modified()))
             ot.warning ("modified images without outputting them. Did you forget -o?");
@@ -5128,7 +5457,7 @@ main (int argc, char *argv[])
     }
 
     if (ot.runstats) {
-        double total_time = totaltime();
+        double total_time = ot.total_runtime();
         double unaccounted = total_time;
         std::cout << "\n";
         int threads = -1;

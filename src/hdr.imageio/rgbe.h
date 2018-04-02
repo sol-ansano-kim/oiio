@@ -8,9 +8,9 @@
    See rgbe.txt file for more details.
 */
 
-#include <stdio.h>
+#include <cstdio>
 
-#include "OpenImageIO/imageio.h"
+#include <OpenImageIO/imageio.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 

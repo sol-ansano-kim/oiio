@@ -34,9 +34,9 @@
 //                   Autodesk Maya documentation, ilib.h
 
 #include <cstdio>
-#include "OpenImageIO/imageio.h"
-#include "OpenImageIO/filesystem.h"
-#include "OpenImageIO/fmath.h"
+#include <OpenImageIO/imageio.h>
+#include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
 
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -135,7 +135,7 @@ namespace iff_pvt {
 
 
 
-class IffInput : public ImageInput {
+class IffInput final : public ImageInput {
 public:
     IffInput () { init(); }
     virtual ~IffInput () { close(); }
@@ -205,7 +205,7 @@ private:
 
 
 
-class IffOutput : public ImageOutput {
+class IffOutput final : public ImageOutput {
 public:
     IffOutput () { init (); }
     virtual ~IffOutput () { close (); }

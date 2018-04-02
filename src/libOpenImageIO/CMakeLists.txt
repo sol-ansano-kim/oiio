@@ -43,6 +43,7 @@ list (APPEND libOpenImageIO_srcs
                           imagebufalgo_yee.cpp imagebufalgo_opencv.cpp
                           maketexture.cpp
                           ../libutil/argparse.cpp
+                          ../libutil/benchmark.cpp
                           ../libutil/errorhandler.cpp 
                           ../libutil/filesystem.cpp 
                           ../libutil/farmhash.cpp 
@@ -53,6 +54,7 @@ list (APPEND libOpenImageIO_srcs
                           ../libutil/SHA1.cpp 
                           ../libutil/strutil.cpp 
                           ../libutil/sysutil.cpp 
+                          ../libutil/thread.cpp 
                           ../libutil/timer.cpp 
                           ../libutil/typedesc.cpp 
                           ../libutil/ustring.cpp 
@@ -97,8 +99,14 @@ if (BUILDSTATIC)
 else ()
     add_library (OpenImageIO SHARED ${libOpenImageIO_srcs})
 endif ()
+
+# if (SANITIZE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+#     # target_link_libraries (OpenImageIO "asan" "ubsan")
+#     target_link_libraries (OpenImageIO ${SANITIZE_LIBRARIES})
+# endif ()
+
 target_link_libraries (OpenImageIO
-                       ${VISIBILITY_COMMAND} ${VISIBILITY_MAP_COMMAND}
+                       ${SANITIZE_LIBRARIES}
                        ${format_plugin_libs} # Add all the target link libraries from the plugins
                        ${Boost_LIBRARIES})
 
@@ -129,21 +137,26 @@ if (FREETYPE_FOUND)
     target_link_libraries (OpenImageIO ${FREETYPE_LIBRARIES} ${BZIP2_LIBRARIES})
 endif ()
 
-# link external libs
-if (EXTERNAL_LIBS)
-    target_link_libraries (OpenImageIO ${EXTERNAL_LIBS})
+# Include GDCM if using it
+if (GDCM_FOUND)
+    include_directories (${GDCM_INCLUDE_DIRS})
+    target_link_libraries (OpenImageIO ${GDCM_LIBRARIES})
+    # set_property(SOURCE dicominput.cpp APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-macro-redefined ")
+    set_property(SOURCE ../dicom.imageio/dicominput.cpp APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-macro-redefined ")
 endif ()
 
-# include external include directories
-if (EXTERNAL_INCLUDE_DIRS)
-    include_directories (${EXTERNAL_INCLUDE_DIRS})
+
+if (MSVC)
+    set_property (SOURCE imagebufalgo_pixelmath.cpp APPEND_STRING PROPERTY COMPILE_FLAGS " /bigobj ")
 endif ()
 
 if (WIN32)
     target_link_libraries (OpenImageIO psapi.lib)
 endif ()
 
-add_dependencies (OpenImageIO "${CMAKE_CURRENT_SOURCE_DIR}/libOpenImageIO.map")
+if (VISIBILITY_MAP_FILE)
+    add_dependencies (OpenImageIO "${VISIBILITY_MAP_FILE}")
+endif ()
 
 if (USE_EXTERNAL_PUGIXML)
     target_link_libraries (OpenImageIO ${PUGIXML_LIBRARIES})
@@ -161,6 +174,11 @@ set_target_properties(OpenImageIO
                          VERSION ${OIIO_VERSION_MAJOR}.${OIIO_VERSION_MINOR}.${OIIO_VERSION_PATCH}
                          SOVERSION ${SOVERSION}
                      )
+if (VISIBILITY_COMMAND)
+    set_target_properties (OpenImageIO
+                           PROPERTIES
+                           LINK_FLAGS "${VISIBILITY_COMMAND} ${VISIBILITY_MAP_COMMAND}")
+endif ()
 
 # For consistency with the linux SpComp2s, create Mac OS X SpComp2s
 # with a .so suffix instead of a .dylib suffix.
