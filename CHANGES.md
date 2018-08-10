@@ -1,3 +1,33 @@
+Release 1.8.13 (1 Aug 2018) -- compared to 1.8.12
+-------------------------------------------------
+* Improved finding LibRaw on Windows #1959
+* Ensure FFMPEG (if found) is the minimum supported version 2.6.  #1963
+* Developer goodies: `intrusive_ptr<>` given a dangerous `release()`
+  method (use with caution). #1986
+
+Release 1.8.12 (1 Jun 2018) -- compared to 1.8.11
+-------------------------------------------------
+* Build fix for 32 bit Windows -- disable SSE that was making trouble. #1933
+* Improved UTF-8 filename support for OpenEXR filenames. #1941
+* filesystem.h: Improve UTF-8 handling for unique_path and temp_directory
+  functions. #1940
+* Fixes to un-break the build when EMBEDPLUGINS=0. #1942
+* Fix iv (especially on OSX) for various ways it has been broken since the
+  shift to Qt5. #1946
+* Improvements in finding the location of OpenJPEG with Macports. #1948
+* ImageCache and TextureSystem now have close(filename) and close_all()
+  methods, which for one file or all files will close the files and release
+  any open file handles (also unlocking write access to those files on
+  Windows), but without invalidating anything it knows about the ImageSpec
+  or any pixel tiles already read from the files, as would happen with a
+  call to the much more drastic invalidate() or invalidate_all(). #1950
+
+Release 1.8.11 (1 May 2018) -- compared to 1.8.10
+-------------------------------------------------
+* Fix to strtof, strtod for non-C locales. #1918
+* Add up-to-date Nuke versions to FindNuke.cmake. #1920
+* Allow building against ffmpeg 4.0. #1926
+
 Release 1.8.10 (1 Apr 2018) -- compared to 1.8.9
 -------------------------------------------------
 * oiiotool frame sequence wildcard improvements: fix handling of negative
@@ -615,6 +645,25 @@ Docs:
 * Fix 'Building OIIO on Windows' link. #1590 (1.8.1)
 
 
+
+Release 1.7.19 (1 Jun 2018) -- compared to 1.7.18
+-------------------------------------------------
+* Build fix for 32 bit Windows -- disable SSE that was making trouble. #1933
+* Improved UTF-8 filename support for OpenEXR filenames. #1941
+* filesystem.h: Improve UTF-8 handling for unique_path and temp_directory
+  functions. #1940
+* Clean up some warnings on modern Clang versions.
+* Improvements in finding the location of OpenJPEG with Macports. #1948
+* ImageCache and TextureSystem now have close(filename) and close_all()
+  methods, which for one file or all files will close the files and release
+  any open file handles (also unlocking write access to those files on
+  Windows), but without invalidating anything it knows about the ImageSpec
+  or any pixel tiles already read from the files, as would happen with a
+  call to the much more drastic invalidate() or invalidate_all(). #1950
+
+Release 1.7.18 (1 May 2018) -- compared to 1.7.17
+-------------------------------------------------
+* Update to build against ffmpeg 4.0
 
 Release 1.7.17 (1 Sep 2017) -- compared to 1.7.16
 -------------------------------------------------
