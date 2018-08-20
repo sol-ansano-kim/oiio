@@ -57,6 +57,7 @@ oiio_opts["USE_SIMD"] = simd
 oiio_opts["OIIO_BUILD_TESTS"] = 0
 oiio_opts["OIIO_BUILD_TOOLS"] = 1
 oiio_opts["EMBEDPLUGINS"] = 1
+oiio_opts["CMAKE_INSTALL_LIBDIR"] = "lib"
 oiio_opts["VERBOSE"] = verbose
 
 # python
