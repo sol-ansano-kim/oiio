@@ -274,16 +274,27 @@ oiio_dependecies += jpeg_outputs
 # openjpeg (no deps [CMake])
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "openjpeg")
 if not rv["require"]:
+    # Openjpeg submodule is referencing v2.3.0 tag
     excons.PrintOnce("OIIO: Build openjpeg from sources ...")
     excons.Call("openjpeg", imp=["OpenjpegPath"])
     openjpeg_path = OpenjpegPath()
     openjpeg_outputs = [OpenjpegPath()]
-
     oiio_opts["OPENJPEG_HOME"] = excons.OutputBaseDirectory()
-    oiio_opts["OPENJPEG_INCLUDE_DIR"] = out_incdir + "/openjpeg-2.1"
+    oiio_opts["OPENJPEG_INCLUDE_DIR"] = out_incdir + "/openjpeg-2.3"
 else:
     oiio_opts["OPENJPEG_HOME"] = os.path.dirname(rv["incdir"])
-    oiio_opts["OPENJPEG_INCLUDE_DIR"] = rv["incdir"] + "/openjpeg-2.1"
+    incdir = None
+    if os.path.isdir(rv["incdir"]):
+        for item in os.listdir(rv["incdir"]):
+            _incdir = rv["incdir"] + "/" + item
+            if item.startswith("openjpeg") and os.path.isdir(_incdir):
+                incdir = _incdir
+                break
+    if incdir is None:
+        excons.PrintOnce("OIIO: Please specify openjpeg compatibility version using openjpeg-version= flag")
+        openjpeg_version = excons.GetArgument("openjpeg-version", "2.1")
+        incdir = rv["incdir"] + "/openjpeg-" + openjpeg_version
+    oiio_opts["OPENJPEG_INCLUDE_DIR"] = incdir
     openjpeg_outputs = []
     export_openjpeg.append(rv.get("libpath"))
 
