@@ -30,7 +30,7 @@ if (NOT BOOST_CUSTOM)
     endforeach ()
 endif ()
 
-if (APPLE)
+if (UNIX)
 #    set (PYTHON_LIBRARIES /opt/local/lib)
     add_definitions ("-DBOOST_PYTHON_USE_GCC_SYMBOL_VISIBILITY")
 endif ()
