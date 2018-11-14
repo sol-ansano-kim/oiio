@@ -126,20 +126,23 @@ if rv["require"]:
    oiio_opts["Boost_LIBRARY_DIRS"] = rv["libdir"]
    oiio_opts["Boost_LIBRARIES"] = ";".join(libs)
 
-   pylib = rv["libdir"] + "/libboost_python" + libsuffix
+   # in boost version more recent than 1.63 (at least), python version was added to the library name
+   # look for those in priority
+   pylib = rv["libdir"] + "/libboost_python" + python_ver.replace(".", "") + libsuffix
+   if not os.path.isfile(pylib):
+      pylib = rv["libdir"] + "/libboost_python" + libsuffix
    if not os.path.isfile(pylib):
       ARGUMENTS["boost-python-static"] = "1"
       pyrv = excons.ExternalLibRequire("boost-python")
       if pyrv["require"] and pyrv["libdir"] != rv["libdir"]:
-         pylibsuffix = excons.GetArgument("boost-python-suffix", "")
-         if pylibsuffix:
-            if sys.platform == "win32":
-               pylibsuffix += "-vc%d-mt-%s.lib" % (int(float(excons.mscver) * 10), strver)
-            else:
-               pylibsuffix += ".a"
-         else:
+         pylibsuffix = excons.GetArgument("boost-python-suffix", None)
+         if pylibsuffix is None:
             pylibsuffix = libsuffix
-         pylib = pyrv["libdir"] + "/libboost_python" + pylibsuffix
+         else:
+            pylibsuffix += (".lib" if sys.platform == "win32" else ".a")
+         pylib = pyrv["libdir"] + "/libboost_python" + python_ver.replace(".", "") + pylibsuffix
+         if not os.path.isfile(pylib):
+            pylib = pyrv["libdir"] + "/libboost_python" + pylibsuffix
          if pyrv["incdir"] != rv["incdir"]:
             oiio_opts["Boost_INCLUDE_DIRS"] += ";%s" % pyrv["incdir"]
          oiio_opts["Boost_LIBRARY_DIRS"] += ";%s" % pyrv["libdir"]
