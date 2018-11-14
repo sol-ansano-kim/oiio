@@ -104,11 +104,13 @@ if rv["require"]:
       sys.exit(1)
    strver = "%d_%d" % (intver / 100000, (intver / 100) % 1000)
 
-   libsuffix = excons.GetArgument("boost-suffix", "")
-   if sys.platform == "win32":
-      libsuffix += "-vc%d-mt-%s.lib" % (int(float(excons.mscver) * 10), strver)
-   else:
-      libsuffix += ".a"
+   libsuffix = excons.GetArgument("boost-suffix", None)
+   if libsuffix is None:
+      if sys.platform == "win32":
+         libsuffix = "-vc%d-mt-%s" % (int(float(excons.mscver) * 10), strver)
+      else:
+         libsuffix = ""
+   libsuffix += (".lib" if sys.platform == "win32" else ".a")
 
    libs = []
    for name in ["filesystem", "regex", "system", "thread"]:
