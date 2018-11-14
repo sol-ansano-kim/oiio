@@ -100,6 +100,7 @@ set (TEX_BATCH_SIZE "" CACHE STRING "Force TextureSystem SIMD batch size (e.g. 1
 set (SOVERSION ${OIIO_VERSION_MAJOR}.${OIIO_VERSION_MINOR}
      CACHE STRING "Set the SO version in the SO name of the output library")
 option (BUILD_OIIOUTIL_ONLY "If ON, will build *only* libOpenImageIO_Util")
+option (BOOST_NO_AUTOLINK "If ON, disable boost auto linking on windows")
 
 if (NOT OIIO_THREAD_ALLOW_DCLP)
     add_definitions ("-DOIIO_THREAD_ALLOW_DCLP=0")

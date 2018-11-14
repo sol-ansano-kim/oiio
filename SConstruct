@@ -121,6 +121,7 @@ if rv["require"]:
       libs.append(path)
 
    oiio_opts["BOOST_CUSTOM"] = 1
+   oiio_opts["BOOST_NO_AUTOLINK"] = 1
    oiio_opts["Boost_VERSION"] = intver
    oiio_opts["Boost_INCLUDE_DIRS"] = rv["incdir"]
    oiio_opts["Boost_LIBRARY_DIRS"] = rv["libdir"]
