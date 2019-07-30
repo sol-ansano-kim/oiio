@@ -73,7 +73,9 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
     endif ()
 endif ()
 
-# turn on more detailed warnings and consider warnings as errors
+# turn on more detailed warnings and consider warnings as errors.
+# Stop the build on warnings for all CI builds, even if STOP_ON_WARNING is
+# off.
 if (NOT MSVC)
     add_definitions ("-Wall")
     if (STOP_ON_WARNING OR DEFINED ENV{CI})

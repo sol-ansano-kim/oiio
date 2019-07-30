@@ -3251,6 +3251,8 @@ ImageCacheImpl::invalidate(ustring filename)
 
     const ustring fingerprint = file->fingerprint();
 
+    const ustring fingerprint = file->fingerprint();
+
     // Invalidate the file itself (close it and clear its spec)
     file->invalidate();
 
