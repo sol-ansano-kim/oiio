@@ -2074,38 +2074,40 @@ IBA_fixNonFinite_ret(const ImageBuf& src,
 
 
 bool
-IBA_render_point(ImageBuf& dst, int x, int y, py::object color_)
+IBA_render_point(ImageBuf& dst, int x, int y, py::object color_,
+                 ROI roi = ROI::All(), int nthreads = 0)
 {
     std::vector<float> color;
     py_to_stdvector(color, color_);
     color.resize(dst.nchannels(), 1.0f);
     py::gil_scoped_release gil;
-    return ImageBufAlgo::render_point(dst, x, y, color);
+    return ImageBufAlgo::render_point(dst, x, y, color, roi, nthreads);
 }
 
 
 bool
 IBA_render_line(ImageBuf& dst, int x1, int y1, int x2, int y2,
-                py::object color_, bool skip_first_point = false)
+                py::object color_, bool skip_first_point = false,
+                ROI roi = ROI::All(), int nthreads = 0)
 {
     std::vector<float> color;
     py_to_stdvector(color, color_);
     color.resize(dst.nchannels(), 1.0f);
     py::gil_scoped_release gil;
     return ImageBufAlgo::render_line(dst, x1, y1, x2, y2, color,
-                                     skip_first_point);
+                                     skip_first_point, roi, nthreads);
 }
 
 
 bool
 IBA_render_box(ImageBuf& dst, int x1, int y1, int x2, int y2, py::object color_,
-               bool fill = false)
+               bool fill = false, ROI roi = ROI::All(), int nthreads = 0)
 {
     std::vector<float> color;
     py_to_stdvector(color, color_);
     color.resize(dst.nchannels(), 1.0f);
     py::gil_scoped_release gil;
-    return ImageBufAlgo::render_box(dst, x1, y1, x2, y2, color, fill);
+    return ImageBufAlgo::render_box(dst, x1, y1, x2, y2, color, fill, roi, nthreads);
 }
 
 
@@ -2775,14 +2777,14 @@ declare_imagebufalgo(py::module& m)
                     "nthreads"_a = 0)
 
         .def_static("render_point", &IBA_render_point, "dst"_a, "x"_a, "y"_a,
-                    "color"_a = py::none())
+                    "color"_a = py::none(), arg("roi")=ROI::All(), arg("nthreads")=0)
 
         .def_static("render_line", &IBA_render_line, "dst"_a, "x1"_a, "y1"_a,
                     "x2"_a, "y2"_a, "color"_a = py::none(),
-                    "skip_first_point"_a = false)
+                    "skip_first_point"_a = false, arg("roi")=ROI::All(), arg("nthreads")=0)
 
         .def_static("render_box", &IBA_render_box, "dst"_a, "x1"_a, "y1"_a,
-                    "x2"_a, "y2"_a, "color"_a = py::none(), "fill"_a = false)
+                    "x2"_a, "y2"_a, "color"_a = py::none(), "fill"_a = false, arg("roi")=ROI::All(), arg("nthreads")=0)
 
         .def_static("render_text", &IBA_render_text, "dst"_a, "x"_a, "y"_a,
                     "text"_a, "fontsize"_a = 16, "fontname"_a = "",
