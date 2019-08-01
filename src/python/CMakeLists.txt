@@ -86,3 +86,29 @@ endif()
 install (TARGETS ${target_name}
          RUNTIME DESTINATION ${PYTHON_SITE_DIR} COMPONENT user
          LIBRARY DESTINATION ${PYTHON_SITE_DIR} COMPONENT user)
+
+if (${PYTHON_VERSION_MAJOR} EQUAL "3")
+    if (PY3_VISIBILITY_MAP_FILE)
+        add_dependencies (${target_name} "${PY3_VISIBILITY_MAP_FILE}")
+    endif ()
+    if (PY3_VISIBILITY_MAP_COMMAND)
+        # if PY3_VISIBILITY_MAP_COMMAND defined means VISIBILTY_COMMAND is necessarily defined too
+        set_target_properties (${target_name}
+                               PROPERTIES
+                               LINK_FLAGS "${VISIBILITY_COMMAND} ${PY3_VISIBILITY_MAP_COMMAND}")
+    endif ()
+elseif (${PYTHON_VERSION_MAJOR} EQUAL "2")
+    if (PY2_VISIBILITY_MAP_FILE)
+        add_dependencies (${target_name} "${PY2_VISIBILITY_MAP_FILE}")
+    endif ()
+    if (PY2_VISIBILITY_MAP_COMMAND)
+        # if PY2_VISIBILITY_MAP_COMMAND defined means VISIBILTY_COMMAND is necessarily defined too
+        set_target_properties (${target_name}
+                               PROPERTIES
+                               LINK_FLAGS "${VISIBILITY_COMMAND} ${PY2_VISIBILITY_MAP_COMMAND}")
+    endif ()
+endif ()
+
+install (TARGETS ${target_name}
+         RUNTIME DESTINATION ${PYTHON_SITE_DIR} COMPONENT user
+         LIBRARY DESTINATION ${PYTHON_SITE_DIR} COMPONENT user)
