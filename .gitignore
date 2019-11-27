@@ -6,3 +6,16 @@ testsuite/runtest.pyc
 src/doc/figures/
 .cproject
 .project
+.sconsign.dblite
+.build/
+oiio.cmake.*
+release/
+debug/
+excons.cache
+*.cmake.*
+*.automake.*
+.sconf_temp
+config.log
+eco/
+oiio.env.tmp
+.vscode/

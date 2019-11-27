@@ -1,0 +1,42 @@
+[submodule "excons"]
+	path = excons
+	url = git://github.com/gatgui/excons.git
+[submodule "zlib"]
+	path = zlib
+	url = git://github.com/gatgui/zlib.git
+[submodule "libpng"]
+	path = libpng
+	url = git://github.com/gatgui/libpng.git
+[submodule "libtiff"]
+	path = libtiff
+	url = git://github.com/gatgui/libtiff.git
+[submodule "libjpeg-turbo"]
+	path = libjpeg-turbo
+	url = git://github.com/gatgui/libjpeg-turbo.git
+[submodule "openjpeg"]
+	path = openjpeg
+	url = git://github.com/gatgui/openjpeg.git
+[submodule "freetype"]
+	path = freetype
+	url = git://github.com/gatgui/freetype.git
+[submodule "openexr"]
+	path = openexr
+	url = git://github.com/gatgui/openexr.git
+[submodule "OpenColorIO"]
+	path = OpenColorIO
+	url = git://github.com/gatgui/OpenColorIO.git
+[submodule "LibRaw"]
+	path = LibRaw
+	url = git://github.com/gatgui/LibRaw.git
+[submodule "Little-cms"]
+	path = Little-cms
+	url = git://github.com/gatgui/Little-cms.git
+[submodule "bzip2"]
+	path = bzip2
+	url = git://github.com/gatgui/bzip2.git
+[submodule "pybind11"]
+	path = pybind11
+	url = git://github.com/pybind/pybind11.git
+[submodule "robin-map"]
+	path = robin-map
+	url = git://github.com/Tessil/robin-map.git

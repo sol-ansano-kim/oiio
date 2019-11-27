@@ -158,6 +158,7 @@ if (USE_OCIO)
     endif ()
 
     if (LINKSTATIC)
+        add_definitions ("-DOpenColorIO_STATIC")
         find_library (TINYXML_LIBRARY NAMES tinyxml)
         if (TINYXML_LIBRARY)
             set (OCIO_LIBRARIES ${OCIO_LIBRARIES} ${TINYXML_LIBRARY})
@@ -207,9 +208,14 @@ endif ()
 
 ###########################################################################
 # BZIP2 - used by ffmped and freetype
-find_package (BZip2)   # Used by ffmpeg
-if (NOT BZIP2_FOUND)
-    set (BZIP2_LIBRARIES "")
+if (BZIP2_LIBRARY AND BZIP2_INCLUDE_DIR)
+    list (APPEND BZIP2_LIBRARIES ${BZIP2_LIBRARY})
+    set (BZIP2_FOUND TRUE)
+else ()
+    find_package (BZip2)   # Used by ffmpeg
+    if (NOT BZIP2_FOUND)
+        set (BZIP2_LIBRARIES "")
+    endif ()
 endif ()
 
 
@@ -368,6 +374,9 @@ include_directories (${JPEG_INCLUDE_DIR})
 # OpenJpeg
 if (USE_OPENJPEG)
     find_package (OpenJpeg)
+    if (LINKSTATIC AND CMAKE_SYSTEM_NAME MATCHES "Windows")
+        add_definitions ("-DOPJ_STATIC")
+    endif()
 endif()
 # end OpenJpeg setup
 ###########################################################################
@@ -391,11 +400,14 @@ if (USE_LIBRAW)
         message (STATUS "LibRaw not found!")
     endif()
 
-    if (LINKSTATIC)
+    if (LINKSTATIC AND USE_JASPER)
         find_package (Jasper)
         find_library (LCMS2_LIBRARIES NAMES lcms2)
         set (LibRaw_r_LIBRARIES ${LibRaw_r_LIBRARIES} ${JASPER_LIBRARIES} ${LCMS2_LIBRARIES})
     endif ()
+    if (LINKSTATIC AND CMAKE_SYSTEM_NAME MATCHES "Windows")
+        add_definitions ("-DLIBRAW_NODLL")
+    endif()
 else ()
     message (STATUS "Not using LibRaw")
 endif()
