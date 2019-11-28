@@ -213,7 +213,7 @@ if not rv["require"]:
     excons.Call("zlib", imp=["ZlibName", "ZlibPath"])    
     z_static = excons.GetArgument("zlib-static", 1, int)
     z_path = ZlibPath(static=z_static)
-    zlib_outputs = [z_path]
+    zlib_outputs = [z_path, "{}/zlib.h".format(out_incdir)]
 
     oiio_opts["ZLIB_INCLUDE_DIR"] = out_incdir
     oiio_opts["ZLIB_LIBRARY"] = z_path
@@ -239,7 +239,7 @@ if not rv["require"]:
     excons.Call("bzip2", imp=["BZ2Name", "BZ2Path"])
     bz2_static = excons.GetArgument("bz2-static", 1, int)
     bz2_path = BZ2Path()
-    bzip2_outputs = [bz2_path]
+    bzip2_outputs = [bz2_path, "{}/bzlib.h".format(out_incdir)]
     
     oiio_opts["BZIP2_LIBRARY"] = bz2_path
     oiio_opts["BZIP2_INCLUDE_DIR"] = out_incdir
@@ -265,7 +265,7 @@ if not rv["require"]:
     excons.Call("libjpeg-turbo", overrides=overrides, imp=["LibjpegName", "LibjpegPath"])
     jpeg_static = excons.GetArgument("libjpeg-static", 1, int)
     jpeg_path = LibjpegPath(static=jpeg_static)
-    jpeg_outputs = [jpeg_path]
+    jpeg_outputs = [jpeg_path, "{}/jpeglib.h".format(out_incdir)]
 
     oiio_opts["JPEG_INCLUDE_DIR"] = out_incdir
     oiio_opts["JPEG_LIBRARY"] = jpeg_path
@@ -325,7 +325,7 @@ if not rv["require"]:
     excons.Call("libpng", overrides=overrides, imp=["LibpngName", "LibpngPath"])
     png_static = excons.GetArgument("libpng-static", 1, int)
     png_path = LibpngPath(png_static)
-    libpng_outputs = [png_path]
+    libpng_outputs = [png_path, "{}/png.h".format(out_incdir)]
 
     oiio_opts["PNG_INCLUDE_DIR"] = out_incdir
     oiio_opts["PNG_LIBRARY"] = png_path
@@ -353,7 +353,7 @@ if not rv["require"]:
     excons.cmake.AddConfigureDependencies("libtiff", zlib_outputs + jpeg_outputs)
     excons.Call("libtiff", overrides=overrides, imp=["LibtiffName", "LibtiffPath"])
     tiff_path = LibtiffPath()
-    tiff_outputs = [tiff_path]
+    tiff_outputs = [tiff_path, "{}/tiff.h".format(out_incdir)]
 
     oiio_opts["TIFF_INCLUDE_DIR"] = out_incdir
     oiio_opts["TIFF_LIBRARY"] = tiff_path
@@ -379,7 +379,7 @@ if not rv["require"]:
     excons.Call("Little-cms", overrides=overrides, imp=["LCMS2Name", "LCMS2Path"])
     lcms2_static = excons.GetArgument("lcms2-static", 1, int)
     lcms2_path = LCMS2Path()
-    lcms2_outputs = [lcms2_path]
+    lcms2_outputs = [lcms2_path, "{}/lcms2.h".format(out_incdir)]
 
     oiio_opts["LCMS2_LIBRARY"] = lcms2_path
 
@@ -407,7 +407,7 @@ if not rv["require"]:
     excons.PrintOnce("OIIO: Build libraw from sources ...")
     excons.Call("LibRaw", overrides=overrides, imp=["LibrawPath", "LibrawName"])
     libraw_path = LibrawPath()
-    libraw_outputs = [libraw_path]
+    libraw_outputs = [libraw_path, "{}/libraw/libraw.h".format(out_incdir)]
 
     oiio_opts["LibRaw_INCLUDE_DIR"] = out_incdir
     oiio_opts["LibRaw_r_LIBRARIES"] = libraw_path
@@ -427,7 +427,7 @@ if not rv["require"]:
     excons.cmake.AddConfigureDependencies("freetype", zlib_outputs + libpng_outputs + bzip2_outputs)
     excons.Call("freetype", overrides=overrides, imp=["FreetypeName", "FreetypePath"])
     freetype_path = FreetypePath()
-    freetype_outputs = [freetype_path]
+    freetype_outputs = [freetype_path, "{}/freetype2/freetype/freetype.h".format(out_incdir)]
     
     oiio_opts["FREETYPE_INCLUDE_DIR"] = out_incdir
     oiio_opts["FREETYPE_LIBRARY"] = freetype_path
@@ -450,7 +450,7 @@ if not rv["require"]:
     excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
     excons.Call("OpenColorIO", overrides=overrides, imp=["OCIOPath", "YamlCppPath", "TinyXmlPath"])
     ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
-    ocio_outputs = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath()]
+    ocio_outputs = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath(), "{}/OpenColorIO/OpenColorIO.h".format(out_incdir)]
     
     oiio_opts["OCIO_INCLUDE_PATH"] = out_incdir
     oiio_opts["OCIO_LIBRARIES"] = OCIOPath(ocio_static)
@@ -468,7 +468,8 @@ oiio_dependecies += ocio_outputs
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "openexr")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build openexr from sources ...")
-    excons.Call("openexr", overrides=overrides, imp=["HalfPath", "IexPath", "ImathPath", "IlmThreadPath", "IlmImfPath"])
+
+    excons.Call("openexr", targets=["ilmbase-static", "openexr-static"], overrides=overrides, imp=["HalfPath", "IexPath", "ImathPath", "IlmThreadPath", "IlmImfPath"])
     openexr_static = (excons.GetArgument("openexr-static", 1, int) != 0)
     openexr_half = HalfPath(openexr_static)
     openexr_iex = IexPath(openexr_static)
