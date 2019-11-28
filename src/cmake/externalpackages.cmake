@@ -99,8 +99,21 @@ else ()
     if (NOT USE_STD_REGEX)
         list (APPEND Boost_COMPONENTS regex)
     endif ()
+    # The FindBoost.cmake interface is broken if it uses boost's installed
+    # cmake output (e.g. boost 1.70.0, cmake <= 3.14). Specifically it fails
+    # to set the expected variables printed below. So until that's fixed
+    # force FindBoost.cmake to use the original brute force path.
+    set (Boost_NO_BOOST_CMAKE ON)
     find_package (Boost 1.53 REQUIRED
                   COMPONENTS ${Boost_COMPONENTS})
+    if (Boost_FOUND)
+        message (STATUS "Boost include      ${Boost_INCLUDE_DIR} ")
+        message (STATUS "Boost lib debug    ${Boost_LIBRARY_DIR_DEBUG} ")
+        message (STATUS "Boost lib release  ${Boost_LIBRARY_DIR_RELEASE} ")
+        message (STATUS "Boost include dirs ${Boost_INCLUDE_DIRS}")
+        message (STATUS "Boost library dirs ${Boost_LIBRARY_DIRS}")
+        message (STATUS "Boost libraries    ${Boost_LIBRARIES}")
+    endif ()
 endif ()
 
 # On Linux, Boost 1.55 and higher seems to need to link against -lrt
@@ -539,8 +552,9 @@ endif()
 
 option (BUILD_PYBIND11_FORCE "Force local download/build of Pybind11 even if installed" OFF)
 option (BUILD_MISSING_PYBIND11 "Local download/build of Pybind11 if not installed" ON)
-set (BUILD_PYBIND11_VERSION "v2.2.4" CACHE STRING "Preferred pybind11 version, of downloading/building our own")
-set (PYBIND11_HOME "" CACHE STRING "Installed pybind11 location hint")
+set (BUILD_PYBIND11_VERSION "v2.4.2" CACHE STRING "Preferred pybind11 version, of downloading/building our own")
+set (PYBIND11_HOME "" CACHE STRING "Installed pybind11 location hint (deprecated)")
+set (PYBIND11_ROOT "" CACHE STRING "Installed pybind11 location hint")
 set (BUILD_PYBIND11_MINIMUM_VERSION "2.2.0")
 
 macro (find_or_download_pybind11)
@@ -549,9 +563,12 @@ macro (find_or_download_pybind11)
     # locally installed in this tree.
     if (NOT BUILD_PYBIND11_FORCE)
         find_path (PYBIND11_INCLUDE_DIR pybind11/pybind11.h
-               "${PROJECT_SOURCE_DIR}/ext/pybind11/include"
-               "${PYBIND11_HOME}"
-               "$ENV{PYBIND11_HOME}"
+               HINTS
+                   "${PROJECT_SOURCE_DIR}/ext/pybind11/include"
+                   "${PYBIND11_ROOT}"
+                   ENV PYBIND11_HOME
+                   "${PYBIND11_HOME}"
+                   ENV PYBIND11_HOME
                )
     endif ()
     # Check the version -- if it's too old, download a local copy.
@@ -564,9 +581,17 @@ macro (find_or_download_pybind11)
         string (REGEX MATCHALL "[0-9]+$" PYBIND11_VERSION_MAJOR ${TMP})
         file(STRINGS "${PYBIND11_COMMON_FILE}" TMP REGEX "^#define PYBIND11_VERSION_MINOR .*$")
         string (REGEX MATCHALL "[0-9]+$" PYBIND11_VERSION_MINOR ${TMP})
-        set (PYBIND11_VERSION "${PYBIND11_VERSION_MAJOR}.${PYBIND11_VERSION_MINOR}")
+        file(STRINGS "${PYBIND11_COMMON_FILE}" TMP REGEX "^#define PYBIND11_VERSION_PATCH .*$")
+        string (REGEX MATCHALL "[0-9]+$" PYBIND11_VERSION_PATCH ${TMP})
+        set (PYBIND11_VERSION "${PYBIND11_VERSION_MAJOR}.${PYBIND11_VERSION_MINOR}.${PYBIND11_VERSION_PATCH}")
         if ("${PYBIND11_VERSION}" VERSION_LESS BUILD_PYBIND11_MINIMUM_VERSION)
             message (WARNING "pybind11 from ${PYBIND11_INCLUDE_DIR} is too old (${PYBIND11_VERSION}), minimum is ${BUILD_PYBIND11_MINIMUM_VERSION}, downloading our own.")
+            set (PYBIND11_INCLUDE_DIR "")
+        endif ()
+        if (${USE_CPP} STREQUAL "11" AND
+            ("${PYBIND11_VERSION}" VERSION_EQUAL "2.4.0" OR
+             "${PYBIND11_VERSION}" VERSION_EQUAL "2.4.1"))
+            message (WARNING "pybind11 ${PYBIND11_VERSION} is buggy and not compatible with C++11, downloading our own.")
             set (PYBIND11_INCLUDE_DIR "")
         endif ()
     endif ()
@@ -600,7 +625,9 @@ macro (find_or_download_pybind11)
         string (REGEX MATCHALL "[0-9]+$" PYBIND11_VERSION_MAJOR ${TMP})
         file(STRINGS "${PYBIND11_COMMON_FILE}" TMP REGEX "^#define PYBIND11_VERSION_MINOR .*$")
         string (REGEX MATCHALL "[0-9]+$" PYBIND11_VERSION_MINOR ${TMP})
-        set (PYBIND11_VERSION "${PYBIND11_VERSION_MAJOR}.${PYBIND11_VERSION_MINOR}")
+        file(STRINGS "${PYBIND11_COMMON_FILE}" TMP REGEX "^#define PYBIND11_VERSION_PATCH .*$")
+        string (REGEX MATCHALL "[0-9]+$" PYBIND11_VERSION_PATCH ${TMP})
+        set (PYBIND11_VERSION "${PYBIND11_VERSION_MAJOR}.${PYBIND11_VERSION_MINOR}.${PYBIND11_VERSION_PATCH}")
     endif ()
 
     if ("${PYBIND11_VERSION}" VERSION_LESS BUILD_PYBIND11_MINIMUM_VERSION)

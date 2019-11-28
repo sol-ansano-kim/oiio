@@ -197,6 +197,8 @@ private:
         m_subimage_specs.clear();
     }
 
+    // Just close the TIFF file handle, but don't forget anything we
+    // learned about the contents of the file or any configuration hints.
     void close_tif()
     {
         if (m_tif) {
@@ -1440,6 +1442,10 @@ TIFFInput::read_native_scanline(int subimage, int miplevel, int y, int z,
         return true;
     }
 
+    // Make sure there's enough scratch space
+    int nvals = m_spec.width * m_inputchannels;
+    m_scratch.resize(nvals * m_spec.format.size());
+
     // For compression modes that don't support random access to scanlines
     // (which I *think* is only LZW), we need to emulate random access by
     // re-seeking.
@@ -1454,7 +1460,14 @@ TIFFInput::read_native_scanline(int subimage, int miplevel, int y, int z,
             ImageSpec dummyspec;
             int old_subimage = current_subimage();
             int old_miplevel = current_miplevel();
-            if (!close() || !open(m_filename, dummyspec)
+            // We need to close the TIFF file s that we can re-open and
+            // seek back to the beginning of this subimage. The close_tif()
+            // accomplishes that. It's important not to do a full close()
+            // here, because that would also call init() to fully reset
+            // to a fresh ImageInput, thus forgetting any configuration
+            // settings such as raw_color or keep_unassociated_alpha.
+            close_tif();
+            if (!open(m_filename, dummyspec)
                 || !seek_subimage(old_subimage, old_miplevel)) {
                 return false;  // Somehow, the re-open failed
             }
@@ -1463,7 +1476,6 @@ TIFFInput::read_native_scanline(int subimage, int miplevel, int y, int z,
         }
         while (m_next_scanline < y) {
             // Keep reading until we're read the scanline we really need
-            m_scratch.resize(m_spec.scanline_bytes());
             if (TIFFReadScanline(m_tif, &m_scratch[0], m_next_scanline) < 0) {
                 error("%s", oiio_tiff_last_error());
                 return false;
@@ -1473,8 +1485,6 @@ TIFFInput::read_native_scanline(int subimage, int miplevel, int y, int z,
     }
     m_next_scanline = y + 1;
 
-    int nvals = m_spec.width * m_inputchannels;
-    m_scratch.resize(nvals * m_spec.format.size());
     bool need_bit_convert = (m_bitspersample != 8 && m_bitspersample != 16
                              && m_bitspersample != 32);
     if (m_photometric == PHOTOMETRIC_PALETTE) {

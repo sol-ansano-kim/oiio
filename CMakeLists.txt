@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.2.2)
 cmake_policy (SET CMP0048 NEW)  # Allow VERSION specifier in project()
 project (OpenImageIO
-         VERSION 2.0.9
+         VERSION 2.0.12
          LANGUAGES CXX C)
 set (PROJ_NAME OIIO)    # short name, caps
 string (TOLOWER ${PROJ_NAME} PROJ_NAME_LOWER)  # short name lower case
@@ -216,7 +216,7 @@ add_subdirectory (src/fonts)
 add_subdirectory (src/nuke)
 
 # install pkgconfig file
-IF ( NOT WIN32 )
+IF ( NOT MSVC )
    configure_file(src/build-scripts/OpenImageIO.pc.in "${CMAKE_BINARY_DIR}/OpenImageIO.pc" @ONLY) 
    install (FILES "${CMAKE_BINARY_DIR}/OpenImageIO.pc"
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
@@ -316,7 +316,8 @@ endif()
 if (USE_PYTHON AND NOT BUILD_OIIOUTIL_ONLY)
     if (NOT SANITIZE_ON_LINUX)
         oiio_add_tests (
-                python-typedesc python-imagespec python-roi python-deep
+                python-typedesc python-imagespec
+                python-roi python-deep python-colorconfig
                 python-imageinput python-imageoutput
                 python-imagebuf python-imagebufalgo
                 IMAGEDIR oiio-images

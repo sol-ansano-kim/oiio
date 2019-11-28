@@ -198,6 +198,57 @@ def write (image, filename, format=oiio.UNKNOWN) :
         print ("Error writing", filename, ":", image.geterror())
 
 
+# Regression test for #2285: configuration settings were "forgotten" if the
+# scanline read order necessitated closing and reopening the file.
+def test_tiff_remembering_config() :
+    # Create a file that has unassociated alpha
+    print ("Testing write and read of unassociated:")
+    spec = oiio.ImageSpec(2,2,4,"float")
+    spec.attribute("oiio:UnassociatedAlpha", 1)
+    wbuf = oiio.ImageBuf(spec)
+    oiio.ImageBufAlgo.fill(wbuf, (0.5, 0.5, 0.5, 0.5))
+    print ("  writing: ", wbuf.get_pixels())
+    wbuf.write("test_unassoc.tif")
+    rbuf = oiio.ImageBuf("test_unassoc.tif")
+    print ("\n  default reading as IB: ", rbuf.get_pixels())
+    config = oiio.ImageSpec()
+    config.attribute("oiio:UnassociatedAlpha", 1)
+    rbuf = oiio.ImageBuf("test_unassoc.tif", 0, 0, config)
+    print ("\n  reading as IB with unassoc hint: ", rbuf.get_pixels())
+    print ("\n  reading as II with hint, read scanlines backward: ")
+    ii = oiio.ImageInput.open("test_unassoc.tif", config)
+    print ("    [1] = ", ii.read_scanline(1))
+    print ("    [0] = ", ii.read_scanline(0))
+    print ("\n")
+
+# Regression test for #2292: make sure that TIFF cmyk files with RGB
+# translation, when read backwards, is ok.
+def test_tiff_cmyk() :
+    # Create a file that has unassociated alpha
+    filename = "test_cmyk.tif"
+    print ("Testing write and read of TIFF CMYK with auto RGB translation:")
+    spec = oiio.ImageSpec(2,2,4,"uint8")
+    spec.attribute("tiff:ColorSpace", "CMYK")
+    spec.channelnames = ("C", "M", "Y", "K")
+    wbuf = oiio.ImageBuf(spec)
+    oiio.ImageBufAlgo.fill(wbuf, (0.5, 0.0, 0.0, 0.5))
+    print ("  writing: ", wbuf.get_pixels())
+    wbuf.write(filename)
+    rbuf = oiio.ImageBuf(filename)
+    print ("\n  default reading as IB: ", rbuf.get_pixels())
+    config = oiio.ImageSpec()
+    config.attribute("oiio:RawColor", 1)
+    rbuf = oiio.ImageBuf(filename, 0, 0, config)
+    print ("\n  reading as IB with rawcolor=1: ", rbuf.get_pixels())
+    print ("\n  reading as II with rawcolor=0, read scanlines backward: ")
+    ii = oiio.ImageInput.open(filename)
+    print ("    [1] = ", ii.read_scanline(1))
+    print ("    [0] = ", ii.read_scanline(0))
+    print ("\n")
+
+
+
+
 ######################################################################
 # main test starts here
 
@@ -257,6 +308,9 @@ try:
     print ("Test read_image into FLOAT:")
     test_readimage ("testu16.tif", method="image", type="float",
                     keep_unknown=True, print_pixels=False)
+
+    test_tiff_remembering_config()
+    test_tiff_cmyk()
 
     print ("Done.")
 except Exception as detail:

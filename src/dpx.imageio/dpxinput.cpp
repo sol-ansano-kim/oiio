@@ -59,6 +59,8 @@ public:
     virtual bool seek_subimage(int subimage, int miplevel) override;
     virtual bool read_native_scanline(int subimage, int miplevel, int y, int z,
                                       void* data) override;
+    virtual bool read_native_scanlines(int subimage, int miplevel, int ybegin,
+                                       int yend, int z, void* data) override;
 
 private:
     int m_subimage;
@@ -66,19 +68,18 @@ private:
     dpx::Reader m_dpx;
     std::vector<unsigned char> m_userBuf;
     bool m_rawcolor;
-    unsigned char* m_dataPtr = nullptr;
+    std::vector<unsigned char> m_decodebuf;  // temporary decode buffer
 
     /// Reset everything to initial state
     ///
     void init()
     {
+        m_subimage = -1;
         if (m_stream) {
             m_stream->Close();
             delete m_stream;
             m_stream = nullptr;
         }
-        delete m_dataPtr;
-        m_dataPtr = nullptr;
         m_userBuf.clear();
         m_rawcolor = false;
     }
@@ -150,7 +151,7 @@ DPXInput::open(const std::string& name, ImageSpec& newspec)
     // open the image
     m_stream = new InStream();
     if (!m_stream->Open(name.c_str())) {
-        error("Could not open file \"%s\"", name.c_str());
+        errorf("Could not open file \"%s\"", name);
         return false;
     }
 
@@ -189,6 +190,8 @@ DPXInput::seek_subimage(int subimage, int miplevel)
 {
     if (miplevel != 0)
         return false;
+    if (subimage == m_subimage)
+        return true;
     if (subimage < 0 || subimage >= m_dpx.header.ImageElementCount())
         return false;
 
@@ -240,11 +243,7 @@ DPXInput::seek_subimage(int subimage, int miplevel)
         m_spec.channelnames.emplace_back("A");
         m_spec.alpha_channel = 0;
         break;
-    case dpx::kLuma:
-        // FIXME: do we treat this as intensity or do we use Y' as per
-        // convention to differentiate it from linear luminance?
-        m_spec.channelnames.emplace_back("Y'");
-        break;
+    case dpx::kLuma: m_spec.channelnames.emplace_back("Y"); break;
     case dpx::kDepth:
         m_spec.channelnames.emplace_back("Z");
         m_spec.z_channel = 0;
@@ -562,16 +561,10 @@ DPXInput::seek_subimage(int subimage, int miplevel)
                          TypeDesc(TypeDesc::UCHAR, m_dpx.header.UserSize()),
                          &m_userBuf[0]);
 
-    dpx::Block block(0, 0, m_dpx.header.Width() - 1, 0);
-    int bufsize = dpx::QueryRGBBufferSize(m_dpx.header, subimage, block);
-    if (bufsize == 0 && !m_rawcolor) {
-        error("Unable to deliver RGB data from source data");
-        return false;
-    } else if (!m_rawcolor && bufsize > 0)
-        m_dataPtr = new unsigned char[bufsize];
-    else
-        // no need to allocate another buffer
-        m_dataPtr = NULL;
+    // All of the 1-channel encoding options also behave like "rawcolor",
+    // not needing color space transformations.
+    if (m_spec.nchannels == 1)
+        m_rawcolor = true;
 
     return true;
 }
@@ -591,24 +584,38 @@ bool
 DPXInput::read_native_scanline(int subimage, int miplevel, int y, int z,
                                void* data)
 {
+    return read_native_scanlines(subimage, miplevel, y, y + 1, z, data);
+}
+
+
+
+bool
+DPXInput::read_native_scanlines(int subimage, int miplevel, int ybegin,
+                                int yend, int z, void* data)
+{
     lock_guard lock(m_mutex);
     if (!seek_subimage(subimage, miplevel))
         return false;
 
-    dpx::Block block(0, y - m_spec.y, m_dpx.header.Width() - 1, y - m_spec.y);
+    dpx::Block block(0, ybegin - m_spec.y, m_dpx.header.Width() - 1,
+                     yend - 1 - m_spec.y);
 
     if (m_rawcolor) {
         // fast path - just read the scanline in
-        if (!m_dpx.ReadBlock(m_subimage, (unsigned char*)data, block))
+        if (!m_dpx.ReadBlock(subimage, (unsigned char*)data, block))
             return false;
     } else {
         // read the scanline and convert to RGB
-        void* ptr = m_dataPtr == NULL ? data : (void*)m_dataPtr;
+        unsigned char* ptr = (unsigned char*)data;
+        int bufsize = dpx::QueryRGBBufferSize(m_dpx.header, subimage, block);
+        if (bufsize > 0) {
+            m_decodebuf.resize(bufsize);
+            ptr = m_decodebuf.data();
+        }
 
-        if (!m_dpx.ReadBlock(m_subimage, (unsigned char*)ptr, block))
+        if (!m_dpx.ReadBlock(subimage, ptr, block))
             return false;
-
-        if (!dpx::ConvertToRGB(m_dpx.header, m_subimage, ptr, data, block))
+        if (!dpx::ConvertToRGB(m_dpx.header, subimage, ptr, data, block))
             return false;
     }
 
