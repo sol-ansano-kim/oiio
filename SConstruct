@@ -4,6 +4,7 @@ import sys
 import excons
 import os
 import glob
+import subprocess
 
 
 major = 2
@@ -506,6 +507,15 @@ else:
 
 oiio_dependecies += openexr_outputs
 
+if not os.path.isfile("pybind11/include/pybind11/pybind11.h"):
+    cmd = "git submodule update --init pybind11"
+    p = subprocess.Popen(cmd, shell=True)
+    p.communicate()
+
+if not os.path.isfile("robin-map/tsl/robin_map.h"):
+    cmd = "git submodule update --init robin-map"
+    p = subprocess.Popen(cmd, shell=True)
+    p.communicate()
 
 # oiio build
 
