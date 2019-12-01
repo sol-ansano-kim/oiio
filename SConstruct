@@ -232,6 +232,8 @@ if not rv["require"]:
 else:
     zlib_outputs = []
     export_zlib.append(rv.get("libpath"))
+    oiio_opts["ZLIB_INCLUDE_DIR"] = rv["incdir"]
+    oiio_opts["ZLIB_LIBRARY"] = rv["libpath"]
 
 # bzip2 (no deps [SCons])
 def Bzip2Libname(static):
@@ -258,6 +260,8 @@ if not rv["require"]:
 else:
     bzip2_outputs = []
     export_bzip2.append(rv.get("libpath"))
+    oiio_opts["BZIP2_LIBRARY"] = rv["libpath"]
+    oiio_opts["BZIP2_INCLUDE_DIR"] = rv["incdir"]
 
 oiio_dependecies += bzip2_outputs
 
@@ -284,6 +288,8 @@ if not rv["require"]:
 else:
     jpeg_outputs = []
     export_jpeg.append(rv.get("libpath"))
+    oiio_opts["JPEG_INCLUDE_DIR"] = rv["incdir"]
+    oiio_opts["JPEG_LIBRARY"] = rv["libpath"]
 
 
 oiio_dependecies += jpeg_outputs
@@ -344,6 +350,8 @@ if not rv["require"]:
 else:
     libpng_outputs = []
     export_png.append(rv.get("libpath"))
+    oiio_opts["PNG_INCLUDE_DIR"] = rv["incdir"]
+    oiio_opts["PNG_LIBRARY"] = rv["libpath"]
 
 oiio_dependecies += libpng_outputs
 
@@ -372,6 +380,8 @@ if not rv["require"]:
 else:
     tiff_outputs = []
     export_tiff.append(rv.get("libpath"))
+    oiio_opts["TIFF_INCLUDE_DIR"] = rv["incdir"]
+    oiio_opts["TIFF_LIBRARY"] = rv["libpath"]
 
 oiio_dependecies += tiff_outputs
 
@@ -398,6 +408,8 @@ if not rv["require"]:
 else:
     lcms2_outputs = []
     export_lcms2.append(rv.get("libpath"))
+    oiio_opts["LCMS2_INCLUDE_DIR"] = rv["incdir"]
+    oiio_opts["LCMS2_LIBRARY"] = rv["libpath"]
 
 oiio_dependecies += lcms2_outputs
 
@@ -442,6 +454,8 @@ if not rv["require"]:
 else:
     freetype_outputs = []
     export_freetype.append(rv.get("libpath"))
+    oiio_opts["FREETYPE_INCLUDE_DIR"] = rv["incdir"]
+    oiio_opts["FREETYPE_LIBRARY"] = rv["libpath"]
 
 oiio_dependecies += freetype_outputs
 
@@ -467,6 +481,16 @@ if not rv["require"]:
     export_ocio += ocio_outputs
 else:
     ocio_outputs = []
+    oiio_opts["OCIO_INCLUDE_PATH"] = rv["incdir"]
+    oiio_opts["OCIO_LIBRARIES"] = rv["libpath"]
+
+    rv = excons.ExternalLibRequire("tinyxml")
+    if rv["require"]:
+        oiio_opts["TINYXML_LIBRARY"] = rv["libpath"]
+
+    rv = excons.ExternalLibRequire("yamlcpp")
+    if rv["require"]:
+        oiio_opts["YAML_LIBRARY"] = rv["libpath"]
     export_ocio.append(rv.get("libpath"))
 
 oiio_dependecies += ocio_outputs
