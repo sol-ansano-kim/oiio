@@ -513,7 +513,7 @@ if not rv["require"]:
     export_openexr = [out_basedir, out_incdir, openexr_half, openexr_iex, openexr_imath, openexr_ilmt, openexr_imf]
 else:
     openexr_outputs = []
-    export_openexr = [rv.get("libpath")]
+    export_openexr = []
 
     oiio_opts["OPENEXR_HOME"] = os.path.dirname(rv["incdir"])
     oiio_opts["OPENEXR_INCLUDE_DIR"] = rv["incdir"]
