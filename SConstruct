@@ -221,17 +221,16 @@ if not rv["require"]:
     z_static = excons.GetArgument("zlib-static", 1, int)
     z_path = ZlibPath(static=z_static)
     zlib_outputs = [z_path, "{}/zlib.h".format(out_incdir)]
-
+    export_zlib = [z_path]
     oiio_opts["ZLIB_INCLUDE_DIR"] = out_incdir
     oiio_opts["ZLIB_LIBRARY"] = z_path
 
     overrides["with-zlib"] = os.path.dirname(os.path.dirname(z_path))
     overrides["zlib-static"] = z_static
     overrides["zlib-name"] = ZlibName(static=z_static)
-    export_zlib += zlib_outputs
 else:
     zlib_outputs = []
-    export_zlib.append(rv.get("libpath"))
+    export_zlib = [rv.get("libpath")]
     oiio_opts["ZLIB_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["ZLIB_LIBRARY"] = rv["libpath"]
 
@@ -249,17 +248,16 @@ if not rv["require"]:
     bz2_static = excons.GetArgument("bz2-static", 1, int)
     bz2_path = BZ2Path()
     bzip2_outputs = [bz2_path, "{}/bzlib.h".format(out_incdir)]
-    
+    export_bzip2 = [bz2_path]
     oiio_opts["BZIP2_LIBRARY"] = bz2_path
     oiio_opts["BZIP2_INCLUDE_DIR"] = out_incdir
 
     overrides["with-bz2"] = os.path.dirname(os.path.dirname(bz2_path))
     overrides["bz2-static"] = bz2_static
     overrides["bz2-name"] = BZ2Name()
-    export_bzip2 += bzip2_outputs
 else:
     bzip2_outputs = []
-    export_bzip2.append(rv.get("libpath"))
+    export_bzip2 = [rv.get("libpath")]
     oiio_opts["BZIP2_LIBRARY"] = rv["libpath"]
     oiio_opts["BZIP2_INCLUDE_DIR"] = rv["incdir"]
 
@@ -277,20 +275,18 @@ if not rv["require"]:
     jpeg_static = excons.GetArgument("libjpeg-static", 1, int)
     jpeg_path = LibjpegPath(static=jpeg_static)
     jpeg_outputs = [jpeg_path, "{}/jpeglib.h".format(out_incdir)]
-
+    export_jpeg = [jpeg_path]
     oiio_opts["JPEG_INCLUDE_DIR"] = out_incdir
     oiio_opts["JPEG_LIBRARY"] = jpeg_path
 
     overrides["with-libjpeg"] = os.path.dirname(os.path.dirname(jpeg_path))
     overrides["libjpeg-static"] = jpeg_static
     overrides["libjpeg-name"] = LibjpegName(jpeg_static)
-    export_jpeg += jpeg_outputs
 else:
     jpeg_outputs = []
-    export_jpeg.append(rv.get("libpath"))
+    export_jpeg = [rv.get("libpath")]
     oiio_opts["JPEG_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["JPEG_LIBRARY"] = rv["libpath"]
-
 
 oiio_dependecies += jpeg_outputs
 
@@ -302,6 +298,7 @@ if not rv["require"]:
     excons.Call("openjpeg", imp=["OpenjpegPath"])
     openjpeg_path = OpenjpegPath()
     openjpeg_outputs = [OpenjpegPath()]
+    export_openjpeg = [OpenjpegPath()]
     oiio_opts["OPENJPEG_HOME"] = excons.OutputBaseDirectory()
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = out_incdir + "/openjpeg-2.3"
 else:
@@ -319,7 +316,7 @@ else:
         incdir = rv["incdir"] + "/openjpeg-" + openjpeg_version
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = incdir
     openjpeg_outputs = []
-    export_openjpeg.append(rv.get("libpath"))
+    export_openjpeg = [rv.get("libpath")]
 
 oiio_dependecies += openjpeg_outputs
 
@@ -339,17 +336,16 @@ if not rv["require"]:
     png_static = excons.GetArgument("libpng-static", 1, int)
     png_path = LibpngPath(png_static)
     libpng_outputs = [png_path, "{}/png.h".format(out_incdir)]
-
+    export_png = [png_path]
     oiio_opts["PNG_INCLUDE_DIR"] = out_incdir
     oiio_opts["PNG_LIBRARY"] = png_path
     
     overrides["with-libpng"] = os.path.dirname(os.path.dirname(png_path))
     overrides["libpng-static"] = png_static
     overrides["libpng-name"] = LibpngName(png_static)
-    export_png += libpng_outputs
 else:
     libpng_outputs = []
-    export_png.append(rv.get("libpath"))
+    export_png = [rv.get("libpath")]
     oiio_opts["PNG_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["PNG_LIBRARY"] = rv["libpath"]
 
@@ -369,17 +365,16 @@ if not rv["require"]:
     excons.Call("libtiff", overrides=overrides, imp=["LibtiffName", "LibtiffPath"])
     tiff_path = LibtiffPath()
     tiff_outputs = [tiff_path, "{}/tiff.h".format(out_incdir)]
-
+    export_tiff = [tiff_path]
     oiio_opts["TIFF_INCLUDE_DIR"] = out_incdir
     oiio_opts["TIFF_LIBRARY"] = tiff_path
 
     overrides["with-libtiff"] = os.path.dirname(os.path.dirname(tiff_path))
     overrides["libtiff-static"] = excons.GetArgument("libtiff-static", 1, int)
     overrides["libtiff-name"] = LibtiffName()
-    export_tiff += tiff_outputs
 else:
     tiff_outputs = []
-    export_tiff.append(rv.get("libpath"))
+    export_tiff = [rv.get("libpath")]
     oiio_opts["TIFF_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["TIFF_LIBRARY"] = rv["libpath"]
 
@@ -397,17 +392,16 @@ if not rv["require"]:
     lcms2_static = excons.GetArgument("lcms2-static", 1, int)
     lcms2_path = LCMS2Path()
     lcms2_outputs = [lcms2_path, "{}/lcms2.h".format(out_incdir)]
-
+    export_lcms2 = [lcms2_path]
     oiio_opts["LCMS2_LIBRARY"] = lcms2_path
 
     overrides["with-lcms2"] = os.path.dirname(os.path.dirname(lcms2_path))
     overrides["lcms2-static"] = lcms2_static
     overrides["lcms2-name"] = LCMS2Name()
     overrides["libraw-with-lcms2"] = 1
-    export_lcms2 += lcms2_outputs
 else:
     lcms2_outputs = []
-    export_lcms2.append(rv.get("libpath"))
+    export_lcms2 = [rv.get("libpath")]
     oiio_opts["LCMS2_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["LCMS2_LIBRARY"] = rv["libpath"]
 
@@ -427,15 +421,14 @@ if not rv["require"]:
     excons.Call("LibRaw", overrides=overrides, imp=["LibrawPath", "LibrawName"])
     libraw_path = LibrawPath()
     libraw_outputs = [libraw_path, "{}/libraw/libraw.h".format(out_incdir)]
-
+    export_raw = [libraw_path]
     oiio_opts["LibRaw_INCLUDE_DIR"] = out_incdir
     oiio_opts["LibRaw_r_LIBRARIES"] = libraw_path
-    export_raw += libraw_outputs
 else:
     libraw_outputs = []
     oiio_opts["LibRaw_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["LibRaw_r_LIBRARIES"] = rv["libpath"]
-    export_raw.append(rv.get("libpath"))
+    export_raw = [rv.get("libpath")]
 
 oiio_dependecies += libraw_outputs
 
@@ -447,13 +440,12 @@ if not rv["require"]:
     excons.Call("freetype", overrides=overrides, imp=["FreetypeName", "FreetypePath"])
     freetype_path = FreetypePath()
     freetype_outputs = [freetype_path, "{}/freetype2/freetype/freetype.h".format(out_incdir)]
-    
+    export_freetype = [freetype_path]
     oiio_opts["FREETYPE_INCLUDE_DIR"] = out_incdir
     oiio_opts["FREETYPE_LIBRARY"] = freetype_path
-    export_freetype += freetype_outputs
 else:
     freetype_outputs = []
-    export_freetype.append(rv.get("libpath"))
+    export_freetype = [rv.get("libpath")]
     oiio_opts["FREETYPE_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["FREETYPE_LIBRARY"] = rv["libpath"]
 
@@ -472,26 +464,28 @@ if not rv["require"]:
     excons.Call("OpenColorIO", overrides=overrides, imp=["OCIOPath", "YamlCppPath", "TinyXmlPath"])
     ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
     ocio_outputs = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath(), "{}/OpenColorIO/OpenColorIO.h".format(out_incdir)]
-    
+    export_ocio = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath()]
     oiio_opts["OCIO_INCLUDE_PATH"] = out_incdir
     oiio_opts["OCIO_LIBRARIES"] = OCIOPath(ocio_static)
     oiio_opts["LCMS2_LIBRARY"] = LCMS2Path()
     oiio_opts["YAML_LIBRARY"] = YamlCppPath()
     oiio_opts["TINYXML_LIBRARY"] = TinyXmlPath()
-    export_ocio += ocio_outputs
 else:
     ocio_outputs = []
+    export_ocio = [rv.get("libpath")]
+
     oiio_opts["OCIO_INCLUDE_PATH"] = rv["incdir"]
     oiio_opts["OCIO_LIBRARIES"] = rv["libpath"]
 
     rv = excons.ExternalLibRequire("tinyxml")
     if rv["require"]:
         oiio_opts["TINYXML_LIBRARY"] = rv["libpath"]
+        export_ocio.append(rv["libpath"])
 
     rv = excons.ExternalLibRequire("yamlcpp")
     if rv["require"]:
         oiio_opts["YAML_LIBRARY"] = rv["libpath"]
-    export_ocio.append(rv.get("libpath"))
+        export_ocio.append(rv["libpath"])
 
 oiio_dependecies += ocio_outputs
 
@@ -516,9 +510,10 @@ if not rv["require"]:
     oiio_opts["OPENEXR_IMATH_LIBRARY"] = openexr_imath
     oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = openexr_ilmt
     oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = openexr_imf
-    export_openexr += openexr_outputs
+    export_openexr = [out_basedir, out_incdir, openexr_half, openexr_iex, openexr_imath, openexr_ilmt, openexr_imf]
 else:
     openexr_outputs = []
+    export_openexr = [rv.get("libpath")]
 
     oiio_opts["OPENEXR_HOME"] = os.path.dirname(rv["incdir"])
     oiio_opts["OPENEXR_INCLUDE_DIR"] = rv["incdir"]
@@ -527,7 +522,12 @@ else:
     oiio_opts["OPENEXR_IMATH_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Imath")
     oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmThread")
     oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmImf")
-    export_openexr.append(rv.get("libpath"))
+
+    export_openexr.append(oiio_opts["OPENEXR_HALF_LIBRARY"])
+    export_openexr.append(oiio_opts["OPENEXR_IEX_LIBRARY"])
+    export_openexr.append(oiio_opts["OPENEXR_IMATH_LIBRARY"])
+    export_openexr.append(oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"])
+    export_openexr.append(oiio_opts["OPENEXR_ILMIMF_LIBRARY"])
 
 oiio_dependecies += openexr_outputs
 
