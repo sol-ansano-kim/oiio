@@ -65,7 +65,7 @@ oiio_opts["VERBOSE"] = verbose
 oiio_opts["PYLIB_INCLUDE_SONAME"] = 0
 oiio_opts["PYLIB_LIB_PREFIX"] = 0
 oiio_opts["PYTHON_VERSION"] = python_ver
-oiio_opts["USE_PYTHON"] = 1
+oiio_opts["USE_PYTHON"] = excons.GetArgument("oiio-python", 1, int)
 oiio_opts["PYBIND11_INCLUDE_DIR"] = os.path.abspath("pybind11/include")
 oiio_opts["ROBINMAP_INCLUDE_DIR"] = os.path.abspath("robin-map")
 
@@ -566,6 +566,8 @@ def RequireOiio(env, static=False):
     env.Append(LIBPATH=[excons.OutputBaseDirectory() + "/lib"])
     excons.Link(env, OiioPath(static=static), static=static, force=True, silent=True)
 
+def OiioVersion():
+    return "{}.{}.{}".format(major, minor, path)
 
 def OiioExtraLibPaths():
     return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_lcms2 + export_freetype + export_bzip2 + export_jbig + export_openexr + export_zlib
@@ -585,6 +587,7 @@ excons.AddHelpOptions(oiio="""OPENIMAGEIO OPTIONS
                            <simd> should be '0' or a comma separated list of desired SIMD directives.
                            Known directives: %s
   oiio-verbose=0|1       : Print lots of messages while compiling [0]
+  oiio-python=0|1        : Make python bind [1]
   oiio-python-dir=<path> : Python prefix ['']
   oiio-python-ver=<ver>  : Python version ['2.7']""" % ", ".join(simd_directives))
 
@@ -592,7 +595,7 @@ excons.DeclareTargets(env, prjs)
 
 Default("oiio")
 
-Export("OiioName OiioPath RequireOiio OiioExtraLibPaths")
+Export("OiioName OiioPath RequireOiio OiioExtraLibPaths OiioVersion")
 
 # Ecosystem
 
