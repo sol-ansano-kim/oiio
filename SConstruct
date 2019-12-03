@@ -90,6 +90,7 @@ if python_dir:
 #   force static link
 ARGUMENTS["boost-static"] = "1"
 rv = excons.ExternalLibRequire("boost")
+boost_outputs = []
 if rv["require"]:
    boost_vh = rv["incdir"] + "/boost/version.hpp"
    if not os.path.isfile(boost_vh):
@@ -136,6 +137,7 @@ if rv["require"]:
    oiio_opts["Boost_INCLUDE_DIRS"] = rv["incdir"]
    oiio_opts["Boost_LIBRARY_DIRS"] = rv["libdir"]
    oiio_opts["Boost_LIBRARIES"] = ";".join(libs)
+   boost_outputs = libs
 
    # in boost version more recent than 1.63 (at least), python version was added to the library name
    # look for those in priority
@@ -570,7 +572,7 @@ def OiioVersion():
     return "{}.{}.{}".format(major, minor, path)
 
 def OiioExtraLibPaths():
-    return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_lcms2 + export_freetype + export_bzip2 + export_jbig + export_openexr + export_zlib
+    return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_lcms2 + export_freetype + export_bzip2 + export_jbig + export_openexr + export_zlib + boost_outputs
 
 
 prjs.append({"name": "oiio",
