@@ -9,7 +9,7 @@ import subprocess
 
 major = 2
 minor = 0
-patch = 12
+patch = 13
 
 env = excons.MakeBaseEnv()
 out_basedir = excons.OutputBaseDirectory()
