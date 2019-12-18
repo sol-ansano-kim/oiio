@@ -197,7 +197,6 @@ if sys.platform != "win32":
 
 export_zlib = []
 export_bzip2 = []
-export_jbig = []
 export_jpeg = []
 export_openjpeg = []
 export_png = []
@@ -207,6 +206,17 @@ export_raw = []
 export_freetype = []
 export_ocio = []
 export_openexr = []
+zlib_static = excons.GetArgument("zlib-static", 1, int)
+bz2_static = excons.GetArgument("bz2-static", 1, int)
+jpeg_static = excons.GetArgument("libjpeg-static", 1, int)
+openjpeg_static = excons.GetArgument("openjpeg-static", 1, int)
+png_static = excons.GetArgument("libpng-static", 1, int)
+tiff_static = excons.GetArgument("libtiff-static", 1, int)
+lcms2_static = excons.GetArgument("lcms2-static", 1, int)
+raw_static = excons.GetArgument("libraw-static", 1, int)
+freetype_static = excons.GetArgument("freetype-static", 1, int)
+ocio_static = excons.GetArgument("ocio-static", 1, int)
+openexr_static = excons.GetArgument("openexr-static", 1, int)
 
 
 # zlib (no deps [CMake])
@@ -220,16 +230,15 @@ rv = excons.cmake.ExternalLibRequire(oiio_opts, "zlib", libnameFunc=ZlibName, de
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build zlib from sources ...")
     excons.Call("zlib", imp=["ZlibName", "ZlibPath"])    
-    z_static = excons.GetArgument("zlib-static", 1, int)
-    z_path = ZlibPath(static=z_static)
+    z_path = ZlibPath(static=zlib_static)
     zlib_outputs = [z_path, "{}/zlib.h".format(out_incdir)]
     export_zlib = [z_path]
     oiio_opts["ZLIB_INCLUDE_DIR"] = out_incdir
     oiio_opts["ZLIB_LIBRARY"] = z_path
 
     overrides["with-zlib"] = os.path.dirname(os.path.dirname(z_path))
-    overrides["zlib-static"] = z_static
-    overrides["zlib-name"] = ZlibName(static=z_static)
+    overrides["zlib-static"] = zlib_static
+    overrides["zlib-name"] = ZlibName(static=zlib_static)
 else:
     zlib_outputs = []
     export_zlib = [rv.get("libpath")]
@@ -247,7 +256,6 @@ rv = excons.cmake.ExternalLibRequire(oiio_opts, "bz2", libnameFunc=Bzip2Libname,
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build bzip2 from sources ...")
     excons.Call("bzip2", imp=["BZ2Name", "BZ2Path"])
-    bz2_static = excons.GetArgument("bz2-static", 1, int)
     bz2_path = BZ2Path()
     bzip2_outputs = [bz2_path, "{}/bzlib.h".format(out_incdir)]
     export_bzip2 = [bz2_path]
@@ -274,7 +282,6 @@ rv = excons.cmake.ExternalLibRequire(oiio_opts, "libjpeg", libnameFunc=JpegLibna
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build libjpeg-turbo from sources ...")
     excons.Call("libjpeg-turbo", overrides=overrides, imp=["LibjpegName", "LibjpegPath"])
-    jpeg_static = excons.GetArgument("libjpeg-static", 1, int)
     jpeg_path = LibjpegPath(static=jpeg_static)
     jpeg_outputs = [jpeg_path, "{}/jpeglib.h".format(out_incdir)]
     export_jpeg = [jpeg_path]
@@ -297,7 +304,8 @@ rv = excons.cmake.ExternalLibRequire(oiio_opts, "openjpeg")
 if not rv["require"]:
     # Openjpeg submodule is referencing v2.3.0 tag
     excons.PrintOnce("OIIO: Build openjpeg from sources ...")
-    excons.Call("openjpeg", imp=["OpenjpegPath"])
+    overrides["openjpeg-static"] = openjpeg_static
+    excons.Call("openjpeg", overrides=overrides, imp=["OpenjpegPath"])
     openjpeg_path = OpenjpegPath()
     openjpeg_outputs = [OpenjpegPath()]
     export_openjpeg = [OpenjpegPath()]
@@ -335,7 +343,6 @@ if not rv["require"]:
     excons.PrintOnce("OIIO: Build libpng from sources ...")
     excons.cmake.AddConfigureDependencies("libpng", zlib_outputs)
     excons.Call("libpng", overrides=overrides, imp=["LibpngName", "LibpngPath"])
-    png_static = excons.GetArgument("libpng-static", 1, int)
     png_path = LibpngPath(png_static)
     libpng_outputs = [png_path, "{}/png.h".format(out_incdir)]
     export_png = [png_path]
@@ -364,6 +371,7 @@ rv = excons.cmake.ExternalLibRequire(oiio_opts, "libtiff", libnameFunc=TiffLibna
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build libtiff from sources ...")
     excons.cmake.AddConfigureDependencies("libtiff", zlib_outputs + jpeg_outputs)
+    overrides["libtiff-static"] = tiff_static
     excons.Call("libtiff", overrides=overrides, imp=["LibtiffName", "LibtiffPath"])
     tiff_path = LibtiffPath()
     tiff_outputs = [tiff_path, "{}/tiff.h".format(out_incdir)]
@@ -372,7 +380,6 @@ if not rv["require"]:
     oiio_opts["TIFF_LIBRARY"] = tiff_path
 
     overrides["with-libtiff"] = os.path.dirname(os.path.dirname(tiff_path))
-    overrides["libtiff-static"] = excons.GetArgument("libtiff-static", 1, int)
     overrides["libtiff-name"] = LibtiffName()
 else:
     tiff_outputs = []
@@ -390,15 +397,14 @@ def Lcms2Defines(static):
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "lcms2", definesFunc=Lcms2Defines, varPrefix="LCMS2_")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build lcms from sources ...")
+    overrides["lcms2-static"] = lcms2_static
     excons.Call("Little-cms", overrides=overrides, imp=["LCMS2Name", "LCMS2Path"])
-    lcms2_static = excons.GetArgument("lcms2-static", 1, int)
     lcms2_path = LCMS2Path()
     lcms2_outputs = [lcms2_path, "{}/lcms2.h".format(out_incdir)]
     export_lcms2 = [lcms2_path]
     oiio_opts["LCMS2_LIBRARY"] = lcms2_path
 
     overrides["with-lcms2"] = os.path.dirname(os.path.dirname(lcms2_path))
-    overrides["lcms2-static"] = lcms2_static
     overrides["lcms2-name"] = LCMS2Name()
     overrides["libraw-with-lcms2"] = 1
 else:
@@ -420,6 +426,7 @@ def RawDefines(static):
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "libraw", libnameFunc=RawLibname, definesFunc=RawDefines, varPrefix="LibRaw_")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build libraw from sources ...")
+    overrides["libraw-static"] = raw_static
     excons.Call("LibRaw", overrides=overrides, imp=["LibrawPath", "LibrawName"])
     libraw_path = LibrawPath()
     libraw_outputs = [libraw_path, "{}/libraw/libraw.h".format(out_incdir)]
@@ -439,6 +446,7 @@ rv = excons.cmake.ExternalLibRequire(oiio_opts, "freetype")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build freetype from sources ...")
     excons.cmake.AddConfigureDependencies("freetype", zlib_outputs + libpng_outputs + bzip2_outputs)
+    overrides["freetype-static"] = freetype_static
     excons.Call("freetype", overrides=overrides, imp=["FreetypeName", "FreetypePath"])
     freetype_path = FreetypePath()
     freetype_outputs = [freetype_path, "{}/freetype2/freetype/freetype.h".format(out_incdir)]
@@ -463,8 +471,9 @@ if not rv["require"]:
     if sys.platform == "win32":
         overrides["ocio-use-boost"] = 1
     excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
+    ocio_static = excons.GetArgument("ocio-static", 1, int)
+    overrides["ocio-static"] = ocio_static
     excons.Call("OpenColorIO", overrides=overrides, imp=["OCIOPath", "YamlCppPath", "TinyXmlPath"])
-    ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
     ocio_outputs = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath(), "{}/OpenColorIO/OpenColorIO.h".format(out_incdir)]
     export_ocio = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath()]
     oiio_opts["OCIO_INCLUDE_PATH"] = out_incdir
@@ -495,9 +504,8 @@ oiio_dependecies += ocio_outputs
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "openexr")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build openexr from sources ...")
-
+    overrides["openexr-static"] = openexr_static
     excons.Call("openexr", targets=["ilmbase-static", "openexr-static"], overrides=overrides, imp=["HalfPath", "IexPath", "ImathPath", "IlmThreadPath", "IlmImfPath"])
-    openexr_static = (excons.GetArgument("openexr-static", 1, int) != 0)
     openexr_half = HalfPath(openexr_static)
     openexr_iex = IexPath(openexr_static)
     openexr_imath = ImathPath(openexr_static)
@@ -567,12 +575,37 @@ def RequireOiio(env, static=False):
     env.Append(CPPPATH=[excons.OutputBaseDirectory() + "/include"])
     env.Append(LIBPATH=[excons.OutputBaseDirectory() + "/lib"])
     excons.Link(env, OiioPath(static=static), static=static, force=True, silent=True)
+    if static:
+      for l in export_png:
+        excons.Link(env, l, static=png_static, force=True, silent=True)
+      for l in export_jpeg:
+        excons.Link(env, l, static=jpeg_static, force=True, silent=True)
+      for l in export_openjpeg:
+        excons.Link(env, l, static=openjpeg_static, force=True, silent=True)
+      for l in export_raw:
+        excons.Link(env, l, static=raw_static, force=True, silent=True)
+      for l in export_tiff:
+        excons.Link(env, l, static=tiff_static, force=True, silent=True)
+      for l in export_ocio:
+        excons.Link(env, l, static=ocio_static, force=True, silent=True)
+      for l in export_lcms2:
+        excons.Link(env, l, static=lcms2_static, force=True, silent=True)
+      for l in export_freetype:
+        excons.Link(env, l, static=freetype_static, force=True, silent=True)
+      for l in export_bzip2:
+        excons.Link(env, l, static=bz2_static, force=True, silent=True)
+      for l in export_openexr:
+        excons.Link(env, l, static=openexr_static, force=True, silent=True)
+      for l in export_zlib:
+        excons.Link(env, l, static=zlib_static, force=True, silent=True)
+      for l in boost_outputs:
+        excons.Link(env, l, static=True, force=True, silent=True)
 
 def OiioVersion():
     return "{}.{}.{}".format(major, minor, path)
 
 def OiioExtraLibPaths():
-    return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_lcms2 + export_freetype + export_bzip2 + export_jbig + export_openexr + export_zlib + boost_outputs
+    return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_lcms2 + export_freetype + export_bzip2 + export_openexr + export_zlib + boost_outputs
 
 
 prjs.append({"name": "oiio",
