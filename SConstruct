@@ -184,6 +184,7 @@ oiio_opts["USE_GIF"] = 0
 oiio_opts["USE_JASPER"] = 0
 oiio_opts["USE_NUKE"] = 0
 oiio_opts["USE_OPENSSL"] = 0
+oiio_opts["USE_WEBP"] = 0
 # Not building 'iv' so far
 oiio_opts["USE_QT"] = 0
 oiio_opts["USE_OPENGL"] = 0
