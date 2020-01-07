@@ -242,9 +242,12 @@ if not rv["require"]:
     overrides["zlib-name"] = ZlibName(static=zlib_static)
 else:
     zlib_outputs = []
-    export_zlib = [rv.get("libpath")]
     oiio_opts["ZLIB_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["ZLIB_LIBRARY"] = rv["libpath"]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      oiio_opts["ZLIB_LIBRARY"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+    export_zlib = [oiio_opts["ZLIB_LIBRARY"]]
+
 
 # bzip2 (no deps [SCons])
 def Bzip2Libname(static):
@@ -268,9 +271,11 @@ if not rv["require"]:
     overrides["bz2-name"] = BZ2Name()
 else:
     bzip2_outputs = []
-    export_bzip2 = [rv.get("libpath")]
-    oiio_opts["BZIP2_LIBRARY"] = rv["libpath"]
     oiio_opts["BZIP2_INCLUDE_DIR"] = rv["incdir"]
+    oiio_opts["BZIP2_LIBRARY"] = rv["libpath"]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      oiio_opts["BZIP2_LIBRARY"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+    export_bzip2 = [oiio_opts["BZIP2_LIBRARY"]]
 
 oiio_dependecies += bzip2_outputs
 
@@ -294,9 +299,11 @@ if not rv["require"]:
     overrides["libjpeg-name"] = LibjpegName(jpeg_static)
 else:
     jpeg_outputs = []
-    export_jpeg = [rv.get("libpath")]
     oiio_opts["JPEG_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["JPEG_LIBRARY"] = rv["libpath"]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      oiio_opts["JPEG_LIBRARY"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+    export_jpeg = [oiio_opts["JPEG_LIBRARY"]]
 
 oiio_dependecies += jpeg_outputs
 
@@ -328,6 +335,8 @@ else:
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = incdir
     openjpeg_outputs = []
     export_openjpeg = [rv.get("libpath")]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      export_openjpeg = [rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])]
 
 oiio_dependecies += openjpeg_outputs
 
@@ -355,9 +364,11 @@ if not rv["require"]:
     overrides["libpng-name"] = LibpngName(png_static)
 else:
     libpng_outputs = []
-    export_png = [rv.get("libpath")]
     oiio_opts["PNG_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["PNG_LIBRARY"] = rv["libpath"]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      oiio_opts["PNG_LIBRARY"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+    export_png = [oiio_opts["PNG_LIBRARY"]]
 
 oiio_dependecies += libpng_outputs
 
@@ -384,9 +395,11 @@ if not rv["require"]:
     overrides["libtiff-name"] = LibtiffName()
 else:
     tiff_outputs = []
-    export_tiff = [rv.get("libpath")]
     oiio_opts["TIFF_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["TIFF_LIBRARY"] = rv["libpath"]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      oiio_opts["TIFF_LIBRARY"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+    export_tiff = [oiio_opts["TIFF_LIBRARY"]]
 
 oiio_dependecies += tiff_outputs
 
@@ -410,9 +423,11 @@ if not rv["require"]:
     overrides["libraw-with-lcms2"] = 1
 else:
     lcms2_outputs = []
-    export_lcms2 = [rv.get("libpath")]
     oiio_opts["LCMS2_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["LCMS2_LIBRARY"] = rv["libpath"]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      oiio_opts["LCMS2_LIBRARY"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+    export_lcms2 = [oiio_opts["LCMS2_LIBRARY"]]
 
 oiio_dependecies += lcms2_outputs
 
@@ -438,7 +453,9 @@ else:
     libraw_outputs = []
     oiio_opts["LibRaw_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["LibRaw_r_LIBRARIES"] = rv["libpath"]
-    export_raw = [rv.get("libpath")]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      oiio_opts["LibRaw_r_LIBRARIES"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+    export_raw = [oiio_opts["LibRaw_r_LIBRARIES"]]
 
 oiio_dependecies += libraw_outputs
 
@@ -456,9 +473,11 @@ if not rv["require"]:
     oiio_opts["FREETYPE_LIBRARY"] = freetype_path
 else:
     freetype_outputs = []
-    export_freetype = [rv.get("libpath")]
     oiio_opts["FREETYPE_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["FREETYPE_LIBRARY"] = rv["libpath"]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      oiio_opts["FREETYPE_LIBRARY"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+    export_freetype = [oiio_opts["FREETYPE_LIBRARY"]]
 
 oiio_dependecies += freetype_outputs
 
@@ -484,20 +503,27 @@ if not rv["require"]:
     oiio_opts["TINYXML_LIBRARY"] = TinyXmlPath()
 else:
     ocio_outputs = []
-    export_ocio = [rv.get("libpath")]
+    export_ocio = []
 
     oiio_opts["OCIO_INCLUDE_PATH"] = rv["incdir"]
     oiio_opts["OCIO_LIBRARIES"] = rv["libpath"]
+    if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+      oiio_opts["OCIO_LIBRARIES"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+    export_ocio.append(oiio_opts["OCIO_LIBRARIES"])
 
     rv = excons.ExternalLibRequire("tinyxml")
     if rv["require"]:
         oiio_opts["TINYXML_LIBRARY"] = rv["libpath"]
-        export_ocio.append(rv["libpath"])
+        if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+          oiio_opts["TINYXML_LIBRARY"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+        export_ocio.append(oiio_opts["TINYXML_LIBRARY"])
 
     rv = excons.ExternalLibRequire("yamlcpp")
     if rv["require"]:
         oiio_opts["YAML_LIBRARY"] = rv["libpath"]
-        export_ocio.append(rv["libpath"])
+        if not os.path.isfile(rv["libpath"]) and sys.platform == "win32":
+          oiio_opts["YAML_LIBRARY"] = rv["libdir"] + "/lib" + os.path.basename(rv["libpath"])
+        export_ocio.append(oiio_opts["YAML_LIBRARY"])
 
 oiio_dependecies += ocio_outputs
 
@@ -527,12 +553,16 @@ else:
     export_openexr = []
 
     oiio_opts["OPENEXR_HOME"] = os.path.dirname(rv["incdir"])
+    half_path = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Half")
+    if not os.path.isfile(half_path) and sys.platform == "win32":
+      half_path = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "libHalf")
+
     oiio_opts["OPENEXR_INCLUDE_DIR"] = rv["incdir"]
-    oiio_opts["OPENEXR_HALF_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Half")
-    oiio_opts["OPENEXR_IEX_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Iex")
-    oiio_opts["OPENEXR_IMATH_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Imath")
-    oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmThread")
-    oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmImf")
+    oiio_opts["OPENEXR_HALF_LIBRARY"] = half_path
+    oiio_opts["OPENEXR_IEX_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(half_path).replace("Half", "Iex")
+    oiio_opts["OPENEXR_IMATH_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(half_path).replace("Half", "Imath")
+    oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(half_path).replace("Half", "IlmThread")
+    oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(half_path).replace("Half", "IlmImf")
 
     export_openexr.append(oiio_opts["OPENEXR_IMATH_LIBRARY"])
     export_openexr.append(oiio_opts["OPENEXR_HALF_LIBRARY"])
