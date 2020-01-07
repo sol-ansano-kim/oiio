@@ -512,7 +512,7 @@ if not rv["require"]:
     openexr_imath = ImathPath(openexr_static)
     openexr_ilmt = IlmThreadPath(openexr_static)
     openexr_imf = IlmImfPath(openexr_static)
-    openexr_outputs = [openexr_imf, openexr_imath, openexr_iex, openexr_half, openexr_ilmt]
+    export_openexr = [openexr_ilmt, openexr_imath, openexr_iex, openexr_half, openexr_imf]
 
     oiio_opts["OPENEXR_HOME"] = out_basedir
     oiio_opts["OPENEXR_INCLUDE_DIR"] = out_incdir
@@ -521,7 +521,7 @@ if not rv["require"]:
     oiio_opts["OPENEXR_IMATH_LIBRARY"] = openexr_imath
     oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = openexr_ilmt
     oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = openexr_imf
-    export_openexr = [out_basedir, out_incdir, openexr_half, openexr_iex, openexr_imath, openexr_ilmt, openexr_imf]
+    openexr_outputs = [out_basedir, out_incdir, openexr_half, openexr_iex, openexr_imath, openexr_ilmt, openexr_imf]
 else:
     openexr_outputs = []
     export_openexr = []
@@ -534,11 +534,11 @@ else:
     oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmThread")
     oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmImf")
 
-    export_openexr.append(oiio_opts["OPENEXR_HALF_LIBRARY"])
-    export_openexr.append(oiio_opts["OPENEXR_IEX_LIBRARY"])
     export_openexr.append(oiio_opts["OPENEXR_IMATH_LIBRARY"])
-    export_openexr.append(oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"])
+    export_openexr.append(oiio_opts["OPENEXR_HALF_LIBRARY"])
     export_openexr.append(oiio_opts["OPENEXR_ILMIMF_LIBRARY"])
+    export_openexr.append(oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"])
+    export_openexr.append(oiio_opts["OPENEXR_IEX_LIBRARY"])
 
 oiio_dependecies += openexr_outputs
 
